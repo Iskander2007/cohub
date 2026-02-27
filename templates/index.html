@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — Главная{% endblock %}
+
+{% block content %}
+<!-- SIDEBAR -->
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+
+    <nav class="nav">
+        {% if user.is_authenticated %}
+        <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
+        {% else %}
+        <a href="{% url 'login' %}" class="nav-item">👤 Войти</a>
+        <a href="{% url 'register' %}" class="nav-item">📝 Регистрация</a>
+        {% endif %}
+    </nav>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main landing">
+    <!-- HERO -->
+    <section class="hero">
+        <h1>Управляйте совместной жизнью легко</h1>
+        <p>COHUB помогает распределять обязанности, отслеживать расходы и поддерживать порядок в совместной квартире.
+        </p>
+
+        {% if user.is_authenticated %}
+        <div class="join-block">
+            <a href="{% url 'create-room' %}" class="btn">➕ СОЗДАТЬ КОМНАТУ</a>
+            <a href="{% url 'join-room' %}" class="btn btn-secondary-link">🔗 ПРИСОЕДИНИТЬСЯ</a>
+        </div>
+        {% else %}
+        <div class="join-block">
+            <input type="text" id="room-code" placeholder="Введите код комнаты">
+            <button class="btn" onclick="joinRoom()">ВСТУПИТЬ В КОМАНДУ</button>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- FEATURES -->
+    <section class="features">
+        <div class="card feature">
+            <h3>📋 Управление задачами</h3>
+            <p>Распределяйте обязанности и следите за выполнением в реальном времени.</p>
+        </div>
+
+        <div class="card feature">
+            <h3>💰 Контроль расходов</h3>
+            <p>Отслеживайте бюджет и общие траты по комнате, видите баланс каждого.</p>
+        </div>
+
+        <div class="card feature">
+            <h3>📊 Аналитика</h3>
+            <p>Смотрите прогресс выполнения задач, график расходов и статистику.</p>
+        </div>
+
+        <div class="card feature">
+            <h3>👥 Командная работа</h3>
+            <p>Координируйте действия с соседями и ведите общий календарь.</p>
+        </div>
+    </section>
+</main>
+
+<script>
+    function joinRoom() {
+        const code = document.getElementById('room-code').value;
+        if (!code) {
+            alert('Пожалуйста, введите код комнаты');
+            return;
+        }
+        alert('Пожалуйста, войдите или зарегистрируйтесь, чтобы присоединиться');
+        window.location.href = '{% url "register" %}';
+    }
+</script>
+{% endblock %}

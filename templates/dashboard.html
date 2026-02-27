@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — Панель управления{% endblock %}
+
+{% block content %}
+<!-- SIDEBAR -->
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    {% if user.is_authenticated %}
+    {% if user.profile.avatar %}
+    <img src="{{ user.profile.avatar.url }}" alt="avatar" class="sidebar-avatar">
+    {% else %}
+    <div class="sidebar-avatar placeholder">?</div>
+    {% endif %}
+    <div style="text-align:center;margin-bottom:20px;font-weight:600;">{{ user.get_full_name|default:user.username }}
+    </div>
+    {% endif %}
+
+    <div class="room-title" id="room-name">{{ room.name }}</div>
+
+    {% if rooms.count > 1 %}
+    <div style="margin-bottom: 20px;">
+        <select id="room-selector" onchange="changeRoom(this.value)"
+            style="width: 100%; padding: 8px; border-radius: 8px; background: rgba(42,168,163,0.1); border: 1px solid var(--primary); color: var(--primary-dark); font-weight: 600;">
+            {% for r in rooms %}
+            <option value="{{ r.id }}" {% if r.id == room.id %}selected{% endif %}>{{ r.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+
+    <div class="members-label">УЧАСТНИКИ</div>
+
+    <div id="members-list">
+        {% for member in members %}
+        <div class="member">
+            {% if member.user.profile.avatar %}
+            <img src="{{ member.user.profile.avatar.url }}" alt="{{ member.user.get_full_name }}">
+            {% else %}
+            <div
+                style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
+                {{ member.user.first_name|first|upper }}</div>
+            {% endif %}
+            <span>{{ member.user.get_full_name|default:member.user.username }}</span>
+            {% if member.is_admin %}<span style="font-size: 10px; opacity: 0.6; margin-left: auto;">👑</span>{% endif %}
+        </div>
+        {% empty %}
+        <div class="member">
+            <span style="opacity: 0.6;">Нет участников</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <nav class="nav">
+        <a href="{% url 'home' %}" class="nav-item">🏠 Главная</a>
+        {% if user.is_authenticated %}
+        <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
+        {% else %}
+        <a href="{% url 'login' %}" class="nav-item">👤 Аккаунт</a>
+        {% endif %}
+    </nav>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+    <!-- TOP CARDS -->
+    <div class="top-cards">
+        <div class="card stat">
+            <div class="card-title">ВЫПОЛНЕНО ЗАДАЧ</div>
+            <div class="big-number" id="completed-tasks">0</div>
+            <div class="sub">из <span id="total-tasks">0</span></div>
+        </div>
+
+        <div class="card stat">
+            <div class="card-title">ЕЖЕМЕСЯЧНЫЕ РАСХОДЫ</div>
+            <div class="circle">
+                <div class="inner"><span id="expenses-current">0</span>₸ / <span id="expenses-budget">0</span>₸</div>
+            </div>
+            <div class="sub">Бюджет · Оценка: <span id="budget-status">загрузка</span></div>
+        </div>
+
+        <div class="card stat">
+            <div class="card-title">ВАШ БАЛАНС</div>
+            <div class="score" id="user-balance">0₸</div>
+            <div class="sub"><span id="balance-type">loading</span></div>
+        </div>
+    </div>
+
+    <!-- BOTTOM -->
+    <div class="bottom-grid">
+        <div class="card duties">
+            <div class="card-title">РАСПИСАНИЕ ЗАДАЧ</div>
+            <table class="tasks-table">
+                <thead>
+                    <tr>
+                        <th>Задача</th>
+                        <th>День</th>
+                        <th>Исполнитель</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody id="tasks-list">
+                    <tr>
+                        <td colspan="4" class="loading">Загружение задач...</td>
+                    </tr>
+                </tbody>
+            </table>
+            <button class="btn btn-small" onclick="showAddTaskForm()">+ Добавить задачу</button>
+        </div>
+
+        <div class="card inventory">
+            <div class="card-title">ГРУППОВОЙ ЧАТ</div>
+            <div id="chat-messages" class="chat-container">
+                <p class="loading">Загружение сообщений...</p>
+            </div>
+            <div class="chat-input-group">
+                <input type="text" id="chat-input" placeholder="Написать сообщение..." class="chat-input">
+                <button class="btn-chat-send" onclick="sendChatMessage()">↳</button>
+            </div>
+        </div>
+
+        <div class="card expenses">
+            <div class="card-title">ПОСЛЕДНИЕ РАСХОДЫ</div>
+            <div id="expenses-list">
+                <p class="loading">Загружение расходов...</p>
+            </div>
+            <button class="btn btn-small" onclick="showAddExpenseForm()">+ Добавить расход</button>
+        </div>
+
+        <div class="card settings">
+            <div class="card-title">УПРАВЛЕНИЕ</div>
+            <p style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;"><strong>Код комнаты:</strong> <code
+                    style="background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">{{ room.code }}</code>
+            </p>
+            <div class="settings-buttons">
+                <button class="btn-secondary" onclick="copyRoomCode()">📋 Скопировать код</button>
+                {% if is_owner %}
+                <button class="btn-secondary" onclick="showSettingsForm()">⚙️ Настройки</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    // Загрузить данные при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function () {
+        loadDashboardData();
+    });
+
+    function changeRoom(roomId) {
+        window.location.href = '/dashboard/' + roomId + '/';
+    }
+
+    function loadDashboardData() {
+        // TODO: Загрузить данные с API
+        console.log('Загрузка данных панели управления...');
+    }
+
+    function showAddTaskForm() {
+        // TODO: Показать форму добавления задачи
+        alert('Форма добавления задачи');
+    }
+
+    function showAddExpenseForm() {
+        // TODO: Показать форму добавления расхода
+        alert('Форма добавления расхода');
+    }
+
+    function showSettingsForm() {
+        // TODO: Показать форму настроек
+        alert('Форма настроек');
+    }
+
+    function copyRoomCode() {
+        const code = '{{ room.code }}';
+        navigator.clipboard.writeText(code);
+        alert('Код скопирован: ' + code);
+    }
+
+    function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        if (input.value.trim()) {
+            // TODO: Отправить сообщение в API
+            console.log('Отправка сообщения:', input.value);
+            input.value = ''; 
+            
+        
+        }
+    }
+</script>
+
+{% endblock %}

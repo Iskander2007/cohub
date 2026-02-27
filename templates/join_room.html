@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Присоединиться к комнате - COHUB{% endblock %}
+
+{% block content %}
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    <div class="members-vertical">MEMBERS</div>
+    <nav class="nav">
+        <a href="{% url 'home' %}" class="nav-item">🏠 Главная</a>
+        {% if user.is_authenticated %}
+        <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
+        {% else %}
+        <a href="{% url 'login' %}" class="nav-item">👤 Аккаунт</a>
+        {% endif %}
+    </nav>
+</aside>
+
+<main class="main register-main">
+    <section class="register-panel card">
+        <div class="register-inner">
+            <h2 class="register-title">ПРИСОЕДИНИТЬСЯ К КОМНАТЕ</h2>
+
+            <form method="post" action="{% url 'join-room' %}" class="register-form">
+                {% csrf_token %}
+
+                <div class="input-group">
+                    <label>Код комнаты</label>
+                    <input type="text" name="room_code" placeholder="Например: ABC123" required
+                        style="text-transform: uppercase;">
+                </div>
+
+                <p style="font-size: 12px; opacity: 0.7; margin-bottom: 15px;">
+                    Попросите код у хозяина комнаты
+                </p>
+
+                <button type="submit" class="btn register-btn">ПРИСОЕДИНИТЬСЯ</button>
+
+                <p class="login-link">Хотите создать свою? <a href="{% url 'create-room' %}">Создать</a></p>
+            </form>
+        </div>
+    </section>
+</main>
+
+{% endblock %}

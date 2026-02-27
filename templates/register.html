@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}JOIN COHUB{% endblock %}
+
+{% block content %}
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    <div class="members-vertical">MEMBERS</div>
+</aside>
+
+<main class="main register-main">
+    <section class="register-panel card">
+        <div class="register-inner">
+            <h2 class="register-title">ПРИСОЕДИНИТЬСЯ К COHUB</h2>
+
+            {% if errors %}
+            <div class="error-message" style="display:block;">
+                <ul>
+                    {% for e in errors %}
+                    <li>{{ e }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <form method="post" action="{% url 'register' %}" class="register-form" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="input-group">
+                    <label>Полное имя</label>
+                    <input type="text" name="full_name" placeholder="Иван Иванов" required
+                        value="{{ full_name|default:'' }}">
+                </div>
+
+                <div class="input-group">
+                    <label>Адрес электронной почты</label>
+                    <input type="email" name="email" placeholder="email@пример.com" required
+                        value="{{ email|default:'' }}">
+                </div>
+
+                <div class="input-group">
+                    <label>Пароль</label>
+                    <input type="password" name="password" placeholder="Минимум 8 символов" required minlength="8">
+                </div>
+
+                <div class="input-group">
+                    <label>Подтвердите пароль</label>
+                    <input type="password" name="password_confirm" placeholder="Повторите пароль" required
+                        minlength="8">
+                </div>
+
+                <div class="checkbox">
+                    <input type="checkbox" id="terms" name="terms" required>
+                    <label for="terms">Я согласен с Условиями и Политикой конфиденциальности</label>
+                </div>
+
+                <div class="input-group">
+                    <label>Аватар (необязательно)</label>
+                    <input type="file" name="avatar" accept="image/*">
+                </div>
+
+                <button type="submit" class="btn register-btn">ЗАРЕГИСТРИРОВАТЬСЯ</button>
+
+                <p class="login-link">Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></p>
+            </form>
+        </div>
+    </section>
+</main>
+
+{% endblock %}

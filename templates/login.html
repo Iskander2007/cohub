@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}LOGIN - COHUB{% endblock %}
+
+{% block content %}
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    <div class="members-vertical">MEMBERS</div>
+</aside>
+
+<main class="main register-main">
+    <section class="register-panel card">
+        <div class="register-inner">
+            <h2 class="register-title">ВОЙТИ</h2>
+            {% if error %}
+            <div class="error-message" style="display:block">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="{% url 'login' %}" class="register-form">
+                {% csrf_token %}
+                <div class="input-group">
+                    <label>Адрес электронной почты</label>
+                    <input type="email" name="email" required value="{{ email|default:'' }}">
+                </div>
+                <div class="input-group">
+                    <label>Пароль</label>
+                    <input type="password" name="password" required>
+                </div>
+                <button type="submit" class="btn register-btn">ВОЙТИ</button>
+                <p class="login-link">Нет аккаунта? <a href="{% url 'register' %}">Зарегистрируйтесь</a></p>
+            </form>
+        </div>
+    </section>
+</main>
+
+{% endblock %}

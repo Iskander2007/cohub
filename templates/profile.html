@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - COHUB{% endblock %}
+
+{% block content %}
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    <div class="members-vertical">MEMBERS</div>
+</aside>
+
+<main class="main profile-main">
+    <div class="card" style="width:100%;max-width:900px;">
+        <div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:260px;text-align:center;">
+                <h3>Личный кабинет</h3>
+                {% if profile.avatar %}
+                <img src="{{ profile.avatar.url }}" alt="Аватар" class="profile-avatar">
+                {% else %}
+                <div class="profile-avatar placeholder">?</div>
+                {% endif %}
+
+                {% if avatar_success %}
+                <div class="notification notification-success">Аватар обновлён.</div>
+                {% endif %}
+
+                <form method="post" action="{% url 'profile' %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="upload_avatar">
+                    <div class="input-group" style="margin-top:15px;">
+                        <input type="file" name="avatar" accept="image/*">
+                    </div>
+                    <button class="btn btn-small" type="submit">Загрузить</button>
+                </form>
+
+                <form method="post" action="{% url 'logout' %}" style="margin-top:20px;">
+                    {% csrf_token %}
+                    <button class="btn btn-secondary" type="submit">Выйти</button>
+                </form>
+            </div>
+
+            <div style="flex:2;min-width:320px;">
+                <h4>Ваши комнаты</h4>
+                {% if rooms %}
+                <ul style="list-style: none; padding: 0;">
+                    {% for r in rooms %}
+                    <li
+                        style="padding: 10px; background: rgba(42,168,163,0.1); margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>{{ r.name }}</strong><br>
+                            <small style="opacity: 0.7;">Код: <code
+                                    style="background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 3px;">{{ r.code }}</code></small>
+                        </div>
+                        <a href="{% url 'dashboard-room' r.id %}" class="btn"
+                            style="padding: 6px 12px; font-size: 12px;">Открыть</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p style="opacity: 0.7;">У вас нет комнат</p>
+                {% endif %}
+                <div style="margin-top: 15px;">
+                    <a href="{% url 'create-room' %}" class="btn-secondary">➕ Создать комнату</a>
+                    <a href="{% url 'join-room' %}" class="btn-secondary">🔗 Присоединиться</a>
+                </div>
+
+                <hr />
+                <h4>Информация</h4>
+                {% if info_success %}
+                <div class="notification notification-success">Данные обновлены.</div>
+                {% endif %}
+                <form method="post" action="{% url 'profile' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_info">
+                    <div class="input-group">
+                        <label>Полное имя</label>
+                        <input type="text" name="full_name" value="{{ user_obj.get_full_name }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" name="email" value="{{ user_obj.email }}">
+                    </div>
+                    <button class="btn btn-small" type="submit">Сохранить</button>
+                </form>
+
+                <hr />
+                <h4>Сменить пароль</h4>
+                {% if change_success %}
+                <div class="notification notification-success">Пароль успешно изменён.</div>
+                {% endif %}
+                <form method="post" action="{% url 'profile' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="change_password">
+                    <div class="input-group">
+                        <label>Текущий пароль</label>
+                        <input type="password" name="current_password" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Новый пароль</label>
+                        <input type="password" name="new_password" required minlength="8">
+                    </div>
+                    <div class="input-group">
+                        <label>Подтвердите пароль</label>
+                        <input type="password" name="confirm_password" required minlength="8">
+                    </div>
+                    <button class="btn register-btn" type="submit">Сменить пароль</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+{% endblock %}
