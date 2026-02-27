@@ -196,6 +196,78 @@ cohub/
 
 ---
 
+## 🚢 Деплой на Railway
+
+1. Зарегистрируйтесь на [railway.app](https://railway.app) и установите CLI:
+   ```bash
+   npm install -g @railway/cli
+   railway login
+   ```
+
+2. Создайте пустой репозиторий на GitHub и привяжите его к проекту:
+   ```bash
+   git init
+   git add .
+   git commit -m "initial"
+   git branch -M main
+   git remote add origin https://github.com/<ваш‑ник>/cohub.git
+   git push -u origin main
+   ```
+
+3. Инициализируйте Railway проект и создайте сервис базы данных:
+   ```bash
+   railway init            # выберите ваш репо, если потребуется
+   ```
+   Затем **создайте Postgres‑сервис**. CLI команды могут меняться и иногда
+   выдавать ошибки вроде "unexpected argument"; если так, просто
+   воспользуйтесь веб‑интерфейсом:
+   1. Откройте https://railway.app и выберите свой проект.
+   2. Нажмите **New Service → PostgreSQL** (или "Database").
+   3. Подождите, пока сервис станет online.
+
+   После этого в настройках проекта автоматически появится переменная
+   `DATABASE_URL`.
+   
+   Для проверки статуса из CLI можно запустить:
+   ```bash
+   railway status   # или просто откройте Dashboard
+   ```
+   но если команды `railway service list`/`railway service add` возвращают
+   ошибки, используйте веб‑интерфейс, это надёжнее.
+
+4. Установите переменные окружения (секреты). На PowerShell
+   каждая пара надо задавать отдельно:
+   ```powershell
+   railway variables set DJANGO_SECRET_KEY=секрет
+   railway variables set DJANGO_DEBUG=False
+   railway variables set DJANGO_ALLOWED_HOSTS=*
+   ```
+   либо используйте одинарные кавычки обёртку и escape для спецсимволов.
+   Команда возвращает ошибку "No service linked" до тех пор, пока в
+   проекте не создан хотя бы один сервис (Postgres, Redis и т.п.).
+
+5. После пуша в `main` Railway автоматически собирает приложение:
+   - устанавливаются зависимости из `requirements.txt`
+   - выполняется `python manage.py collectstatic` по Procfile
+   - запускается gunicorn как в `Procfile`.
+
+6. Запустите миграции и создайте суперпользователя через CLI:
+   ```bash
+   railway run python manage.py migrate
+   railway run python manage.py createsuperuser
+   ```
+   > Если вы получите сообщение `Project has no services`, это значит,
+   > что сервисы (например, база данных) ещё не созданы или не привязаны.  
+   > Создайте хотя бы один сервис (Postgres) через `railway service add`
+   > или через Dashboard, затем повторите команды.
+
+7. Откройте URL приложения:
+   ```bash
+   railway open
+   ```
+
+Сайт будет доступен по адресу вида `https://<your-project>.railway.app`.
+
 ## 🎯 Будущие улучшения
 
 - [ ] WebSocket для real-time обновлений
@@ -211,3 +283,5 @@ cohub/
 **Версия:** 1.0  
 **Дата создания:** 27 февраля 2026  
 **Автор:** COHUB Team
+#   c o h u b - s i t e  
+ 
