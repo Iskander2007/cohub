@@ -10,9 +10,11 @@ services:
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_ALLOWED_HOSTS
-        value: cohub-web.onrender.com
+        value: .onrender.com,localhost,127.0.0.1
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://cohub-web.onrender.com
+        value: https://*.onrender.com
+      - key: DATABASE_URL
+        sync: false
       - key: DJANGO_SECURE_SSL_REDIRECT
         value: "True"
       - key: DJANGO_SESSION_COOKIE_SECURE
