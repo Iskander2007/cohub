@@ -4,20 +4,42 @@ Django settings for cohub project.
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+def env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_list(name, default=None):
+    value = os.environ.get(name)
+    if value is None:
+        return default or []
+    return [item.strip() for item in value.split(',') if item.strip()]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = env_bool('DJANGO_DEBUG', default=False)
+
 # SECURITY WARNING: keep the secret key used in production secret!
 # Pull from environment variable for safety, default to the insecure string for dev.
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-your-secret-key-change-in-production')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
-
-# Allow hosts set via env or wildcard during development
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
+# Explicit host allow-list prevents host header abuse in production.
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', ['localhost', '127.0.0.1'])
+CSRF_TRUSTED_ORIGINS = env_list(
+    'DJANGO_CSRF_TRUSTED_ORIGINS',
+    ['http://localhost:8000', 'http://127.0.0.1:8000'],
+)
 
 
 
@@ -79,6 +101,8 @@ DATABASES = {
     )
 }
 
+DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('DJANGO_DB_CONN_MAX_AGE', '60'))
+
 
 # Password validation
 
@@ -122,13 +146,55 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Security hardening defaults that are safe for local development.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', default=False)
+SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE', default=SECURE_SSL_REDIRECT)
+CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE', default=SECURE_SSL_REDIRECT)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False)
+SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', default=False)
+
+# Limit oversized requests and uploads to reduce abuse and accidental resource exhaustion.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE', str(2_621_440)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DJANGO_FILE_UPLOAD_MAX_MEMORY_SIZE', str(2_097_152)))
+AVATAR_MAX_UPLOAD_SIZE = int(os.environ.get('DJANGO_AVATAR_MAX_UPLOAD_SIZE', str(FILE_UPLOAD_MAX_MEMORY_SIZE)))
+
+# Simple brute-force and API abuse controls.
+LOGIN_RATE_LIMIT = int(os.environ.get('DJANGO_LOGIN_RATE_LIMIT', '5'))
+LOGIN_RATE_LIMIT_WINDOW = int(os.environ.get('DJANGO_LOGIN_RATE_LIMIT_WINDOW', '300'))
+API_THROTTLE_ANON = os.environ.get('DJANGO_API_THROTTLE_ANON', '30/min')
+API_THROTTLE_USER = os.environ.get('DJANGO_API_THROTTLE_USER', '120/min')
+
 # Default primary key field type
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # REST Framework settings
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
     'DEFAULT_FILTER_BACKENDS': ['rest_framework.filters.SearchFilter'],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': API_THROTTLE_ANON,
+        'user': API_THROTTLE_USER,
+    },
 }

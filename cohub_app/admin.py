@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile
+from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile, DebtSettlement
 
 
 @admin.register(Room)
@@ -44,3 +44,10 @@ class ExpenseShareAdmin(admin.ModelAdmin):
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ['user', 'avatar']
     search_fields = ['user__username', 'user__email']
+
+
+@admin.register(DebtSettlement)
+class DebtSettlementAdmin(admin.ModelAdmin):
+    list_display = ['room', 'from_user', 'to_user', 'amount', 'settled_by', 'settled_at']
+    list_filter = ['room', 'settled_at']
+    search_fields = ['room__name', 'from_user__username', 'to_user__username', 'settled_by__username']

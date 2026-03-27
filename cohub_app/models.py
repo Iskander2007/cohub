@@ -113,6 +113,42 @@ class ExpenseShare(models.Model):
         return f"{self.user.username} - {self.amount}₸"
 
 
+class DebtSettlement(models.Model):
+    """Запись о погашении долга между участниками комнаты"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='debt_settlements', verbose_name="Комната")
+    from_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='debt_settlements_from', verbose_name="Кто погасил")
+    to_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='debt_settlements_to', verbose_name="Кому погасили")
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
+    settled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='debt_settlements_done', verbose_name="Отметил погашение")
+    settled_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата погашения")
+
+    class Meta:
+        verbose_name = "Погашение долга"
+        verbose_name_plural = "История погашений"
+        ordering = ['-settled_at']
+
+    def __str__(self):
+        return f"{self.from_user.username} -> {self.to_user.username}: {self.amount}₸"
+
+
+class ChatMessage(models.Model):
+    """Сообщение чата в комнате"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='chat_messages', verbose_name="Комната")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_messages', verbose_name="Автор")
+    text = models.TextField(verbose_name="Текст сообщения")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+
+    class Meta:
+        verbose_name = "Сообщение чата"
+        verbose_name_plural = "Сообщения чата"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.author.username}: {self.text[:30]}"
+
+
 class UserProfile(models.Model):
     """Дополнительная информация о пользователе (аватар и т.п.)"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')

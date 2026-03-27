@@ -20,10 +20,10 @@
 
     {% if rooms.count > 1 %}
     <div style="margin-bottom: 20px;">
-        <select id="room-selector" onchange="changeRoom(this.value)"
+        <select id="room-selector" title="Выбор комнаты" onchange="changeRoom(this.value)"
             style="width: 100%; padding: 8px; border-radius: 8px; background: rgba(42,168,163,0.1); border: 1px solid var(--primary); color: var(--primary-dark); font-weight: 600;">
             {% for r in rooms %}
-            <option value="{{ r.id }}" {% if r.id == room.id %}selected{% endif %}>{{ r.name }}</option>
+            <option value="{{ r.id }}">{{ r.name }}</option>
             {% endfor %}
         </select>
     </div>
@@ -91,6 +91,29 @@
     <div class="bottom-grid">
         <div class="card duties">
             <div class="card-title">РАСПИСАНИЕ ЗАДАЧ</div>
+            <div class="quick-task-header">Быстрые задачи</div>
+            <div class="quick-task-grid" id="quick-task-grid">
+                <button class="quick-task-card"
+                    onclick="createTaskTemplate('Уборка комнаты', 'Базовая уборка и наведение порядка', 'high')">
+                    <span class="quick-task-icon">🧹</span>
+                    <span class="quick-task-label">Уборка комнаты</span>
+                </button>
+                <button class="quick-task-card"
+                    onclick="createTaskTemplate('Выкинуть мусор', 'Вынести мусор до вечера', 'medium')">
+                    <span class="quick-task-icon">🗑️</span>
+                    <span class="quick-task-label">Выкинуть мусор</span>
+                </button>
+                <button class="quick-task-card"
+                    onclick="createTaskTemplate('Помыть посуду', 'Помыть и убрать посуду после еды', 'medium')">
+                    <span class="quick-task-icon">🍽️</span>
+                    <span class="quick-task-label">Помыть посуду</span>
+                </button>
+                <button class="quick-task-card"
+                    onclick="createTaskTemplate('Купить продукты', 'Докупить продукты по списку', 'high')">
+                    <span class="quick-task-icon">🛒</span>
+                    <span class="quick-task-label">Купить продукты</span>
+                </button>
+            </div>
             <table class="tasks-table">
                 <thead>
                     <tr>
@@ -106,7 +129,11 @@
                     </tr>
                 </tbody>
             </table>
-            <button class="btn btn-small" onclick="showAddTaskForm()">+ Добавить задачу</button>
+            <div class="task-actions">
+                <button class="btn btn-small" onclick="showAddTaskForm()">+ Добавить задачу</button>
+                <button class="btn-secondary btn-small btn-danger-soft" onclick="openDeleteCompletedModal()">🧹 Удалить
+                    выполненные</button>
+            </div>
         </div>
 
         <div class="card inventory">
@@ -122,10 +149,53 @@
 
         <div class="card expenses">
             <div class="card-title">ПОСЛЕДНИЕ РАСХОДЫ</div>
+            <div class="quick-expense-header">Услуга / категория</div>
+            <div class="quick-expense-category-grid" id="expense-category-grid">
+                <button class="quick-expense-chip" data-category="Еда" onclick="selectExpenseCategory('Еда')">🍔
+                    Еда</button>
+                <button class="quick-expense-chip" data-category="Коммуналка"
+                    onclick="selectExpenseCategory('Коммуналка')">💡 Коммуналка</button>
+                <button class="quick-expense-chip" data-category="Интернет"
+                    onclick="selectExpenseCategory('Интернет')">🌐 Интернет</button>
+                <button class="quick-expense-chip" data-category="Транспорт"
+                    onclick="selectExpenseCategory('Транспорт')">🚌 Транспорт</button>
+                <button class="quick-expense-chip" data-category="Прочее" onclick="selectExpenseCategory('Прочее')">📦
+                    Прочее</button>
+            </div>
+
+            <div class="quick-expense-header">Сумма</div>
+            <div class="quick-expense-amount-grid" id="expense-amount-grid">
+                <button class="quick-expense-chip" data-amount="500" onclick="selectExpenseAmount(500)">500₸</button>
+                <button class="quick-expense-chip" data-amount="1000" onclick="selectExpenseAmount(1000)">1000₸</button>
+                <button class="quick-expense-chip" data-amount="2000" onclick="selectExpenseAmount(2000)">2000₸</button>
+                <button class="quick-expense-chip" data-amount="5000" onclick="selectExpenseAmount(5000)">5000₸</button>
+                <button class="quick-expense-chip" data-amount="7000" onclick="selectExpenseAmount(7000)">7000₸</button>
+                <button class="quick-expense-chip" data-amount="9000" onclick="selectExpenseAmount(9000)">9000₸</button>
+                <button class="quick-expense-chip" data-amount="10000"
+                    onclick="selectExpenseAmount(10000)">10000₸</button>
+                <button class="quick-expense-chip" onclick="promptCustomExpenseAmount()">Другая</button>
+            </div>
+            <p class="quick-expense-selected" id="quick-expense-selected"></p>
             <div id="expenses-list">
                 <p class="loading">Загружение расходов...</p>
             </div>
-            <button class="btn btn-small" onclick="showAddExpenseForm()">+ Добавить расход</button>
+            <div class="expense-actions">
+                <button class="btn btn-small" onclick="addSelectedExpense()">+ Добавить по выбору</button>
+                <button class="btn-secondary btn-small btn-danger-soft" onclick="openDeleteMonthlyExpensesModal()">🗑️
+                    Очистить месяц</button>
+            </div>
+        </div>
+
+        <div class="card debts">
+            <div class="card-title">КТО КОМУ ДОЛЖЕН</div>
+            <div id="debts-list">
+                <p class="loading">Расчет долгов...</p>
+            </div>
+            <div class="settlement-history-title">Последние погашения</div>
+            <div id="settlement-history-list">
+                <p class="loading">История погашений загружается...</p>
+            </div>
+            <button class="btn btn-small" onclick="loadDashboardData()">↻ Обновить долги</button>
         </div>
 
         <div class="card settings">
@@ -135,6 +205,9 @@
             </p>
             <div class="settings-buttons">
                 <button class="btn-secondary" onclick="copyRoomCode()">📋 Скопировать код</button>
+                <button class="btn-secondary" onclick="openAssistantModal()">🤖 Помощник</button>
+                <button class="btn-secondary" onclick="showDailySummary()">📊 Сводка дня</button>
+                <button class="btn-secondary" onclick="completeMyTasks()">✅ Закрыть мои задачи</button>
                 {% if is_owner %}
                 <button class="btn-secondary" onclick="showSettingsForm()">⚙️ Настройки</button>
                 {% endif %}
@@ -143,52 +216,901 @@
     </div>
 </main>
 
+<div id="delete-completed-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="delete-completed-title">
+        <div class="modal-title" id="delete-completed-title">Удалить выполненные задачи</div>
+        <p class="modal-text">Найдено выполненных задач: <strong id="completed-count-value">0</strong>.</p>
+        <p class="modal-note">Удаление необратимо. Вы сможете продолжить работу с чистым списком задач.</p>
+        <div class="modal-actions">
+            <button id="delete-completed-confirm" class="btn btn-small"
+                onclick="confirmDeleteCompletedTasks()">Удалить</button>
+            <button class="btn-secondary btn-small" onclick="closeDeleteCompletedModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div id="delete-monthly-expenses-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="delete-monthly-expenses-title">
+        <div class="modal-title" id="delete-monthly-expenses-title">Очистить расходы</div>
+        <label for="delete-expenses-period" class="modal-label">Период удаления</label>
+        <select id="delete-expenses-period" class="modal-select" onchange="refreshDeleteExpensesPreview()">
+            <option value="current">Текущий месяц</option>
+            <option value="previous">Прошлый месяц</option>
+            <option value="all">Все расходы</option>
+        </select>
+        <p class="modal-text">Найдено расходов: <strong id="monthly-expense-count-value">0</strong>.</p>
+        <p class="modal-note" id="monthly-expense-note">Будут удалены расходы выбранного периода.</p>
+        <div class="modal-actions">
+            <button id="delete-monthly-expenses-confirm" class="btn btn-small"
+                onclick="confirmDeleteMonthlyExpenses()">Удалить</button>
+            <button class="btn-secondary btn-small" onclick="closeDeleteMonthlyExpensesModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div id="assistant-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card assistant-modal-card" role="dialog" aria-modal="true" aria-labelledby="assistant-title">
+        <div class="modal-title" id="assistant-title">🤖 AI-помощник для общаги</div>
+        <label for="assistant-period" class="modal-label">Период анализа</label>
+        <select id="assistant-period" class="modal-select" onchange="loadAssistantAdvice()">
+            <option value="14">Последние 14 дней</option>
+            <option value="30" selected>Последние 30 дней</option>
+            <option value="60">Последние 60 дней</option>
+        </select>
+        <div id="assistant-content" class="assistant-content">
+            <p class="loading">Считаю рекомендации...</p>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-small" onclick="applyAssistantShoppingList()">Применить покупки</button>
+            <button class="btn btn-small" onclick="applyAssistantTaskDistribution()">Применить задачи</button>
+            <button class="btn btn-small" onclick="loadAssistantAdvice()">Обновить советы</button>
+            <button class="btn-secondary btn-small" onclick="closeAssistantModal()">Закрыть</button>
+        </div>
+    </div>
+</div>
+
 <script>
+    const CURRENT_ROOM_ID = '{{ room.id }}';
+    const CURRENT_ROOM_CODE = '{{ room.code }}';
+    const CURRENT_USER_ID = Number('{{ user.id|default:0 }}');
+    let dashboardState = {
+        tasks: [],
+        expenses: [],
+        messages: [],
+        members: [],
+        stats: null,
+        debts: [],
+        recentSettlements: [],
+    };
+    let selectedExpenseCategory = 'Прочее';
+    let selectedExpenseAmount = null;
+
     // Загрузить данные при загрузке страницы
     document.addEventListener('DOMContentLoaded', function () {
+        const roomSelector = document.getElementById('room-selector');
+        if (roomSelector) {
+            roomSelector.value = CURRENT_ROOM_ID;
+        }
+        updateExpenseSelectionUI();
         loadDashboardData();
+        setInterval(loadChatMessages, 10000);
     });
+
+    function selectExpenseCategory(category) {
+        selectedExpenseCategory = category;
+        updateExpenseSelectionUI();
+    }
+
+    function selectExpenseAmount(amount) {
+        selectedExpenseAmount = Number(amount);
+        updateExpenseSelectionUI();
+    }
+
+    function promptCustomExpenseAmount() {
+        const amountRaw = (prompt('Введите сумму расхода:') || '').replace(',', '.').trim();
+        const amount = Number(amountRaw);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showNotification('Введите корректную сумму', 'error');
+            return;
+        }
+        selectedExpenseAmount = amount;
+        updateExpenseSelectionUI();
+    }
+
+    function updateExpenseSelectionUI() {
+        document.querySelectorAll('#expense-category-grid .quick-expense-chip').forEach(button => {
+            const isActive = button.dataset.category === selectedExpenseCategory;
+            button.classList.toggle('is-active', isActive);
+        });
+
+        document.querySelectorAll('#expense-amount-grid .quick-expense-chip').forEach(button => {
+            const buttonAmount = Number(button.dataset.amount || '');
+            const isActive = Number.isFinite(buttonAmount) && selectedExpenseAmount === buttonAmount;
+            button.classList.toggle('is-active', isActive);
+        });
+
+        const selectedLabel = selectedExpenseAmount ? `${selectedExpenseAmount}₸` : 'сумма не выбрана';
+        document.getElementById('quick-expense-selected').textContent = `Выбрано: ${selectedExpenseCategory} · ${selectedLabel}`;
+    }
 
     function changeRoom(roomId) {
         window.location.href = '/dashboard/' + roomId + '/';
     }
 
-    function loadDashboardData() {
-        // TODO: Загрузить данные с API
-        console.log('Загрузка данных панели управления...');
+    function getCompletedTasks() {
+        return (dashboardState.tasks || []).filter(task => task.status === 'completed');
     }
 
-    function showAddTaskForm() {
-        // TODO: Показать форму добавления задачи
-        alert('Форма добавления задачи');
+    function getCurrentMonthExpenses() {
+        const current = new Date();
+        const month = current.getMonth();
+        const year = current.getFullYear();
+        return (dashboardState.expenses || []).filter(expense => {
+            const expenseDate = new Date(expense.date);
+            return expenseDate.getMonth() === month && expenseDate.getFullYear() === year;
+        });
     }
 
-    function showAddExpenseForm() {
-        // TODO: Показать форму добавления расхода
-        alert('Форма добавления расхода');
+    function getPreviousMonthExpenses() {
+        const current = new Date();
+        const previous = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+        const month = previous.getMonth();
+        const year = previous.getFullYear();
+        return (dashboardState.expenses || []).filter(expense => {
+            const expenseDate = new Date(expense.date);
+            return expenseDate.getMonth() === month && expenseDate.getFullYear() === year;
+        });
+    }
+
+    function getExpensesForPeriod(period) {
+        if (period === 'previous') {
+            return getPreviousMonthExpenses();
+        }
+        if (period === 'all') {
+            return [...(dashboardState.expenses || [])];
+        }
+        return getCurrentMonthExpenses();
+    }
+
+    function getExpensePeriodLabel(period) {
+        if (period === 'previous') return 'прошлый месяц';
+        if (period === 'all') return 'все расходы';
+        return 'текущий месяц';
+    }
+
+    function refreshDeleteExpensesPreview() {
+        const period = document.getElementById('delete-expenses-period').value;
+        const expenses = getExpensesForPeriod(period);
+        document.getElementById('monthly-expense-count-value').textContent = expenses.length;
+        document.getElementById('monthly-expense-note').textContent = `Будут удалены расходы за: ${getExpensePeriodLabel(period)}.`;
+    }
+
+    function openDeleteCompletedModal() {
+        const completedTasks = getCompletedTasks();
+        if (!completedTasks.length) {
+            showNotification('Нет выполненных задач для удаления');
+            return;
+        }
+
+        document.getElementById('completed-count-value').textContent = completedTasks.length;
+        const modal = document.getElementById('delete-completed-modal');
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDeleteCompletedModal() {
+        const modal = document.getElementById('delete-completed-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function openDeleteMonthlyExpensesModal() {
+        const periodSelect = document.getElementById('delete-expenses-period');
+        periodSelect.value = 'current';
+        const monthlyExpenses = getExpensesForPeriod(periodSelect.value);
+        if (!monthlyExpenses.length) {
+            showNotification('За текущий месяц удалять нечего');
+            return;
+        }
+
+        refreshDeleteExpensesPreview();
+        const modal = document.getElementById('delete-monthly-expenses-modal');
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDeleteMonthlyExpensesModal() {
+        const modal = document.getElementById('delete-monthly-expenses-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function openAssistantModal() {
+        const modal = document.getElementById('assistant-modal');
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        loadAssistantAdvice();
+    }
+
+    function closeAssistantModal() {
+        const modal = document.getElementById('assistant-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function renderAssistantList(title, items) {
+        if (!items || !items.length) {
+            return '';
+        }
+        return `
+            <div class="assistant-section">
+                <div class="assistant-section-title">${title}</div>
+                <ul class="assistant-list">
+                    ${items.map(item => `<li>${item}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    function renderPersonalAssistantCards(personalSuggestions) {
+        if (!Array.isArray(personalSuggestions) || !personalSuggestions.length) {
+            return '';
+        }
+        return `
+            <div class="assistant-section">
+                <div class="assistant-section-title">Персональные советы</div>
+                ${personalSuggestions.map(item => `
+                    <div class="assistant-person-card">
+                        <div class="assistant-person-head">
+                            <div class="assistant-person-name">${item.name}</div>
+                            <button class="btn-secondary btn-small assistant-person-action" onclick="applyAssistantPersonalTask(${Number(item.user_id)})">Применить персонально</button>
+                        </div>
+                        <ul class="assistant-list">
+                            ${(item.advice || []).map(advice => `<li>${advice}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    async function loadAssistantAdvice() {
+        const container = document.getElementById('assistant-content');
+        container.innerHTML = '<p class="loading">Считаю рекомендации...</p>';
+        const periodDays = Number(document.getElementById('assistant-period')?.value || 30);
+
+        try {
+            const data = await apiCall('GET', `/rooms/${CURRENT_ROOM_ID}/assistant/?days=${periodDays}`);
+            const metrics = data?.metrics || {};
+            const summary = `Период: ${Number(metrics.period_days || periodDays)} дн. · Расходы: ${(Number(metrics.total_expenses || 0)).toFixed(2)}₸ · В еде: ${(Number(metrics.food_expenses || 0)).toFixed(2)}₸ · Задач в работе: ${Number(metrics.pending_tasks || 0)}`;
+
+            container.innerHTML = `
+                <div class="assistant-summary">${summary}</div>
+                ${renderAssistantList('Совет', data?.expense_insights || [])}
+                ${renderAssistantList('Список покупок', data?.shopping_list || [])}
+                ${renderAssistantList('Распределение задач', data?.task_suggestions || [])}
+                ${renderPersonalAssistantCards(data?.personal_suggestions || [])}
+            `;
+        } catch (error) {
+            container.innerHTML = '<p class="loading">Не удалось получить советы. Попробуйте еще раз.</p>';
+        }
+    }
+
+    async function applyAssistantShoppingList() {
+        try {
+            const periodDays = Number(document.getElementById('assistant-period')?.value || 30);
+            const advice = await apiCall('GET', `/rooms/${CURRENT_ROOM_ID}/assistant/?days=${periodDays}`);
+            const shoppingList = Array.isArray(advice?.shopping_list) ? advice.shopping_list : [];
+            const result = await apiCall('POST', `/rooms/${CURRENT_ROOM_ID}/assistant_apply_shopping/`, {
+                shopping_list: shoppingList,
+            });
+
+            showNotification(`Покупки применены: создано ${result.created_count}, пропущено ${result.skipped_count}`);
+            await loadDashboardData();
+            await loadAssistantAdvice();
+        } catch (error) {
+            showNotification('Не удалось применить список покупок', 'error');
+        }
+    }
+
+    async function applyAssistantTaskDistribution() {
+        try {
+            const result = await apiCall('POST', `/rooms/${CURRENT_ROOM_ID}/assistant_apply_tasks/`, {});
+            showNotification(`Перераспределено задач: ${result.updated_count}`);
+            await loadDashboardData();
+            await loadAssistantAdvice();
+        } catch (error) {
+            showNotification('Не удалось применить распределение задач', 'error');
+        }
+    }
+
+    async function applyAssistantPersonalTask(userId) {
+        try {
+            const result = await apiCall('POST', `/rooms/${CURRENT_ROOM_ID}/assistant_apply_personal/`, {
+                user_id: Number(userId),
+            });
+
+            if (!result || !result.updated_count) {
+                showNotification('Для выбранного участника сейчас нечего применять');
+            } else {
+                showNotification(`Назначено для ${result.target_name}: ${result.task_title}`);
+            }
+
+            await loadDashboardData();
+            await loadAssistantAdvice();
+        } catch (error) {
+            showNotification('Не удалось применить персональный совет', 'error');
+        }
+    }
+
+    async function loadDashboardData() {
+        try {
+            const [tasks, expenses, stats, members] = await Promise.all([
+                getTasks(CURRENT_ROOM_ID),
+                getExpenses(CURRENT_ROOM_ID),
+                getRoomStats(CURRENT_ROOM_ID),
+                getRoomMembers(CURRENT_ROOM_ID),
+            ]);
+
+            dashboardState.tasks = tasks;
+            dashboardState.expenses = expenses;
+            dashboardState.stats = stats;
+            dashboardState.members = members;
+            dashboardState.debts = Array.isArray(stats?.debts) ? stats.debts : deriveDebtTransfers(stats?.balances || {});
+            dashboardState.recentSettlements = Array.isArray(stats?.recent_settlements) ? stats.recent_settlements : [];
+
+            renderStats();
+            renderTasks();
+            renderExpenses();
+            renderDebts();
+            renderSettlementHistory();
+            renderMembers();
+            await loadChatMessages();
+        } catch (error) {
+            showNotification('Ошибка загрузки данных панели', 'error');
+        }
+    }
+
+    function renderStats() {
+        const tasks = dashboardState.tasks || [];
+        const expenses = dashboardState.expenses || [];
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        const total = tasks.length;
+
+        const currentMonth = new Date().getMonth();
+        const monthlyExpenseTotal = expenses
+            .filter(e => new Date(e.date).getMonth() === currentMonth)
+            .reduce((sum, e) => sum + Number(e.amount), 0);
+
+        const budgetKey = `cohub:budget:${CURRENT_ROOM_ID}`;
+        const budget = Number(localStorage.getItem(budgetKey) || 0);
+
+        document.getElementById('completed-tasks').textContent = completed;
+        document.getElementById('total-tasks').textContent = total;
+        document.getElementById('expenses-current').textContent = monthlyExpenseTotal.toFixed(0);
+        document.getElementById('expenses-budget').textContent = budget.toFixed(0);
+
+        let budgetStatus = 'без бюджета';
+        if (budget > 0) {
+            const percent = (monthlyExpenseTotal / budget) * 100;
+            budgetStatus = percent <= 70 ? 'норма' : (percent <= 100 ? 'внимание' : 'перерасход');
+        }
+        document.getElementById('budget-status').textContent = budgetStatus;
+
+        const balance = dashboardState.stats?.balances || {};
+        const me = Object.entries(balance).find(([name]) => name === '{{ user.username }}');
+        const myBalance = me ? me[1] : 0;
+        document.getElementById('user-balance').textContent = `${myBalance.toFixed(2)}₸`;
+        document.getElementById('balance-type').textContent = myBalance >= 0 ? 'вам должны' : 'вы должны';
+    }
+
+    function renderTasks() {
+        const tasksList = document.getElementById('tasks-list');
+        const tasks = dashboardState.tasks || [];
+
+        if (!tasks.length) {
+            tasksList.innerHTML = '<tr><td colspan="4" class="loading">Задач пока нет</td></tr>';
+            return;
+        }
+
+        tasksList.innerHTML = tasks.slice(0, 10).map(task => {
+            const assignee = task.assigned_to ? (task.assigned_to.first_name || task.assigned_to.username) : 'Не назначен';
+            const statusText = task.status === 'completed' ? '✅ Готово' : (task.status === 'in_progress' ? '⏳ В процессе' : '🕓 Ожидает');
+            const due = task.due_date ? formatDate(task.due_date) : 'Без срока';
+
+            return `
+                <tr>
+                    <td>${task.title}</td>
+                    <td>${due}</td>
+                    <td>${assignee}</td>
+                    <td>
+                        ${statusText}
+                        ${task.status === 'completed' ? `<button class="btn-secondary task-delete-btn" onclick="deleteTaskById('${task.id}')">Удалить</button>` : ''}
+                        ${task.status !== 'completed' ? `<button class="btn btn-small" style="margin-left:8px;padding:4px 8px;font-size:11px;" onclick="completeTaskFromUI('${task.id}')">Готово</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderExpenses() {
+        const container = document.getElementById('expenses-list');
+        const expenses = dashboardState.expenses || [];
+
+        if (!expenses.length) {
+            container.innerHTML = '<p class="loading">Расходов пока нет</p>';
+            return;
+        }
+
+        container.innerHTML = expenses.slice(0, 8).map(expense => {
+            const payer = expense.paid_by ? (expense.paid_by.first_name || expense.paid_by.username) : 'Неизвестно';
+            return `
+                <div class="expense-item">
+                    <div class="expense-meta">
+                        <strong>${expense.description}</strong><br>
+                        <small>${expense.category} · ${payer}</small>
+                    </div>
+                    <div class="expense-controls">
+                        <div class="expense-amount">${Number(expense.amount).toFixed(2)}₸</div>
+                        <button class="btn-secondary expense-delete-btn" onclick="deleteExpenseById('${expense.id}')">Удалить</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function addSelectedExpense() {
+        if (!selectedExpenseAmount) {
+            showNotification('Выберите сумму расхода', 'error');
+            return;
+        }
+
+        try {
+            await createExpense(
+                CURRENT_ROOM_ID,
+                selectedExpenseCategory,
+                Number(selectedExpenseAmount),
+                CURRENT_USER_ID,
+                selectedExpenseCategory,
+                []
+            );
+            showNotification(`Добавлен расход: ${selectedExpenseCategory} ${selectedExpenseAmount}₸`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось добавить расход', 'error');
+        }
+    }
+
+    async function deleteExpenseById(expenseId) {
+        try {
+            await apiCall('DELETE', `/expenses/${expenseId}/`);
+            showNotification('Расход удалён');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось удалить расход', 'error');
+        }
+    }
+
+    function deriveDebtTransfers(balances) {
+        const entries = Object.entries(balances || {}).map(([name, value]) => ({
+            name,
+            amount: Number(value) || 0,
+        }));
+
+        const creditors = entries
+            .filter(item => item.amount > 0.01)
+            .map(item => ({ ...item }))
+            .sort((a, b) => b.amount - a.amount);
+
+        const debtors = entries
+            .filter(item => item.amount < -0.01)
+            .map(item => ({ name: item.name, amount: Math.abs(item.amount) }))
+            .sort((a, b) => b.amount - a.amount);
+
+        const transfers = [];
+        let creditorIndex = 0;
+        let debtorIndex = 0;
+
+        while (creditorIndex < creditors.length && debtorIndex < debtors.length) {
+            const creditor = creditors[creditorIndex];
+            const debtor = debtors[debtorIndex];
+            const transferAmount = Math.min(creditor.amount, debtor.amount);
+
+            if (transferAmount > 0.01) {
+                transfers.push({
+                    from: debtor.name,
+                    to: creditor.name,
+                    amount: Number(transferAmount.toFixed(2)),
+                });
+            }
+
+            creditor.amount -= transferAmount;
+            debtor.amount -= transferAmount;
+
+            if (creditor.amount <= 0.01) {
+                creditorIndex += 1;
+            }
+            if (debtor.amount <= 0.01) {
+                debtorIndex += 1;
+            }
+        }
+
+        return transfers;
+    }
+
+    function renderDebts() {
+        const container = document.getElementById('debts-list');
+        const debts = dashboardState.debts || [];
+
+        if (!debts.length) {
+            container.innerHTML = '<p class="loading">Долгов нет. Баланс закрыт ✅</p>';
+            return;
+        }
+
+        container.innerHTML = debts.map(item => `
+            <div class="debt-item">
+                <div class="debt-route"><strong>${item.from_name || item.from}</strong> → <strong>${item.to_name || item.to}</strong></div>
+                <div class="debt-amount">${item.amount.toFixed(2)}₸</div>
+                ${item.from_user_id && item.to_user_id ? `<button class="btn-secondary debt-settle-btn" onclick="settleDebt('${item.from_user_id}', '${item.to_user_id}')">Погашено</button>` : ''}
+            </div>
+        `).join('');
+    }
+
+    async function settleDebt(fromUserId, toUserId) {
+        try {
+            const result = await apiCall('POST', '/expense-shares/settle_between/', {
+                room: CURRENT_ROOM_ID,
+                from_user_id: Number(fromUserId),
+                to_user_id: Number(toUserId),
+            });
+
+            if (!result || !result.settled_count) {
+                showNotification('Незакрытых долгов между этими участниками не найдено');
+            } else {
+                const amount = Number(result.settled_amount || 0).toFixed(2);
+                showNotification(`Закрыто долей: ${result.settled_count} на сумму ${amount}₸`);
+            }
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось отметить долг как погашенный', 'error');
+        }
+    }
+
+    function renderSettlementHistory() {
+        const container = document.getElementById('settlement-history-list');
+        if (!container) return;
+
+        const history = dashboardState.recentSettlements || [];
+        if (!history.length) {
+            container.innerHTML = '<p class="loading">История погашений пока пуста</p>';
+            return;
+        }
+
+        container.innerHTML = history.map(item => {
+            const timestamp = item.settled_at ? formatDate(item.settled_at) : '';
+            const settledBy = item.settled_by ? ` · отметил: ${item.settled_by}` : '';
+            return `
+                <div class="settlement-item">
+                    <div class="settlement-main"><strong>${item.from_name}</strong> → <strong>${item.to_name}</strong></div>
+                    <div class="settlement-meta">${Number(item.amount).toFixed(2)}₸ · ${timestamp}${settledBy}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function confirmDeleteMonthlyExpenses() {
+        const period = document.getElementById('delete-expenses-period').value;
+        const monthlyExpenses = getExpensesForPeriod(period);
+        if (!monthlyExpenses.length) {
+            showNotification('В выбранном периоде удалять нечего');
+            closeDeleteMonthlyExpensesModal();
+            return;
+        }
+
+        const confirmButton = document.getElementById('delete-monthly-expenses-confirm');
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Удаляем...';
+
+        try {
+            await Promise.all(monthlyExpenses.map(expense => apiCall('DELETE', `/expenses/${expense.id}/`)));
+            showNotification(`Удалено расходов (${getExpensePeriodLabel(period)}): ${monthlyExpenses.length}`);
+            closeDeleteMonthlyExpensesModal();
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Ошибка удаления расходов за месяц', 'error');
+        } finally {
+            confirmButton.disabled = false;
+            confirmButton.textContent = 'Удалить';
+        }
+    }
+
+    function renderMembers() {
+        const list = document.getElementById('members-list');
+        const members = dashboardState.members || [];
+        if (!members.length) {
+            return;
+        }
+
+        list.innerHTML = members.map(member => {
+            const name = (member.user.first_name || member.user.username);
+            const firstLetter = (name[0] || '?').toUpperCase();
+            const badge = member.is_admin ? '<span style="font-size: 10px; opacity: 0.6; margin-left: auto;">👑</span>' : '';
+            return `
+                <div class="member">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">${firstLetter}</div>
+                    <span>${name}</span>
+                    ${badge}
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function completeTaskFromUI(taskId) {
+        try {
+            await completeTask(taskId);
+            showNotification('Задача отмечена как выполненная');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось обновить задачу', 'error');
+        }
+    }
+
+    async function deleteTaskById(taskId) {
+        try {
+            await apiCall('DELETE', `/tasks/${taskId}/`);
+            showNotification('Задача удалена');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось удалить задачу', 'error');
+        }
+    }
+
+    async function confirmDeleteCompletedTasks() {
+        const completedTasks = getCompletedTasks();
+        if (!completedTasks.length) {
+            showNotification('Нет выполненных задач для удаления');
+            closeDeleteCompletedModal();
+            return;
+        }
+
+        const confirmButton = document.getElementById('delete-completed-confirm');
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Удаляем...';
+
+        try {
+            await Promise.all(completedTasks.map(task => apiCall('DELETE', `/tasks/${task.id}/`)));
+            showNotification(`Удалено задач: ${completedTasks.length}`);
+            closeDeleteCompletedModal();
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Ошибка удаления выполненных задач', 'error');
+        } finally {
+            confirmButton.disabled = false;
+            confirmButton.textContent = 'Удалить';
+        }
+    }
+
+    async function showAddTaskForm() {
+        const title = prompt('Название задачи:');
+        if (!title || !title.trim()) return;
+
+        const description = prompt('Описание задачи (необязательно):') || '';
+        const dueDateRaw = prompt('Срок (формат YYYY-MM-DD HH:MM, необязательно):') || '';
+
+        let assignedToId = null;
+        if (dashboardState.members.length) {
+            const membersPrompt = dashboardState.members.map(m => `${m.user.id}: ${m.user.first_name || m.user.username}`).join('\n');
+            const selected = prompt(`Назначить участнику (ID) или оставить пустым:\n${membersPrompt}`);
+            assignedToId = selected ? Number(selected) : null;
+        }
+
+        let payload = {
+            room: CURRENT_ROOM_ID,
+            title: title.trim(),
+            description: description.trim(),
+            assigned_to_id: assignedToId,
+            priority: 'medium',
+            status: 'pending',
+        };
+
+        if (dueDateRaw.trim()) {
+            const parsedDate = new Date(dueDateRaw);
+            if (Number.isNaN(parsedDate.getTime())) {
+                showNotification('Некорректный формат даты', 'error');
+                return;
+            }
+            payload.due_date = parsedDate.toISOString();
+        }
+
+        try {
+            await apiCall('POST', '/tasks/', payload);
+            showNotification('Задача добавлена');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Ошибка создания задачи', 'error');
+        }
+    }
+
+    async function showAddExpenseForm() {
+        const description = prompt('Описание расхода:');
+        if (!description || !description.trim()) return;
+
+        const amountRaw = (prompt('Сумма расхода (например 3500):') || '').replace(',', '.').trim();
+        const amount = Number(amountRaw);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showNotification('Введите корректную сумму', 'error');
+            return;
+        }
+
+        const category = (prompt('Категория (еда, быт, интернет и т.д.):') || 'прочее').trim() || 'прочее';
+        const payerRaw = (prompt('ID того, кто оплатил (пусто = вы):') || '').trim();
+        const parsedPayer = Number(payerRaw);
+        const paidById = Number.isInteger(parsedPayer) && parsedPayer > 0 ? parsedPayer : CURRENT_USER_ID;
+
+        try {
+            await createExpense(CURRENT_ROOM_ID, description.trim(), amount, paidById, category.trim(), []);
+            showNotification('Расход добавлен');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Ошибка создания расхода', 'error');
+        }
     }
 
     function showSettingsForm() {
-        // TODO: Показать форму настроек
-        alert('Форма настроек');
+        const budgetKey = `cohub:budget:${CURRENT_ROOM_ID}`;
+        const current = localStorage.getItem(budgetKey) || '0';
+        const nextBudget = prompt('Месячный бюджет комнаты (₸):', current);
+        if (nextBudget === null) return;
+
+        const parsed = Number(nextBudget);
+        if (Number.isNaN(parsed) || parsed < 0) {
+            showNotification('Некорректный бюджет', 'error');
+            return;
+        }
+
+        localStorage.setItem(budgetKey, String(parsed));
+        showNotification('Бюджет сохранён');
+        renderStats();
     }
 
-    function copyRoomCode() {
-        const code = '{{ room.code }}';
-        navigator.clipboard.writeText(code);
-        alert('Код скопирован: ' + code);
-    }
-
-    function sendChatMessage() {
-        const input = document.getElementById('chat-input');
-        if (input.value.trim()) {
-            // TODO: Отправить сообщение в API
-            console.log('Отправка сообщения:', input.value);
-            input.value = ''; 
-            
-        
+    async function copyRoomCode() {
+        try {
+            await navigator.clipboard.writeText(CURRENT_ROOM_CODE);
+            showNotification(`Код скопирован: ${CURRENT_ROOM_CODE}`);
+        } catch (error) {
+            showNotification('Не удалось скопировать код', 'error');
         }
     }
+
+    async function loadChatMessages() {
+        try {
+            const data = await apiCall('GET', `/chat-messages/?room=${CURRENT_ROOM_ID}`);
+            dashboardState.messages = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+            renderChatMessages();
+        } catch (error) {
+            document.getElementById('chat-messages').innerHTML = '<p class="loading">Ошибка загрузки чата</p>';
+        }
+    }
+
+    async function createTaskTemplate(title, description, priority = 'medium') {
+        try {
+            await apiCall('POST', '/tasks/', {
+                room: CURRENT_ROOM_ID,
+                title,
+                description,
+                assigned_to_id: CURRENT_USER_ID,
+                priority,
+                status: 'pending',
+            });
+            showNotification(`Задача "${title}" добавлена`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось добавить шаблон задачи', 'error');
+        }
+    }
+
+    function renderChatMessages() {
+        const container = document.getElementById('chat-messages');
+        const messages = [...(dashboardState.messages || [])].reverse().slice(-30);
+
+        if (!messages.length) {
+            container.innerHTML = '<p class="loading">Чат пока пуст</p>';
+            return;
+        }
+
+        container.innerHTML = messages.map(msg => `
+            <div style="margin-bottom:8px;padding:8px;border-radius:8px;background:rgba(42,168,163,0.08);">
+                <div style="font-size:11px;opacity:0.7;">${msg.author_name} · ${formatDate(msg.created_at)}</div>
+                <div>${msg.text}</div>
+            </div>
+        `).join('');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (text) {
+            try {
+                await apiCall('POST', '/chat-messages/', { room: CURRENT_ROOM_ID, text });
+                await loadChatMessages();
+            } catch (error) {
+                showNotification('Не удалось отправить сообщение', 'error');
+            }
+            input.value = '';
+        }
+    }
+
+    async function completeMyTasks() {
+        const myTasks = (dashboardState.tasks || []).filter(t => t.status !== 'completed' && t.assigned_to && t.assigned_to.id === CURRENT_USER_ID);
+        if (!myTasks.length) {
+            showNotification('У вас нет незавершённых задач');
+            return;
+        }
+
+        try {
+            await Promise.all(myTasks.map(task => completeTask(task.id)));
+            showNotification(`Закрыто задач: ${myTasks.length}`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Ошибка массового закрытия', 'error');
+        }
+    }
+
+    function showDailySummary() {
+        const tasks = dashboardState.tasks || [];
+        const expenses = dashboardState.expenses || [];
+
+        const pending = tasks.filter(t => t.status !== 'completed').length;
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0).toFixed(2);
+        const categories = {};
+        expenses.forEach(e => {
+            categories[e.category] = (categories[e.category] || 0) + Number(e.amount);
+        });
+        const topCategory = Object.entries(categories).sort((a, b) => b[1] - a[1])[0];
+
+        const summary = [
+            `Задачи: ${completed} завершено, ${pending} в работе`,
+            `Расходы всего: ${totalExpenses}₸`,
+            topCategory ? `Топ-категория: ${topCategory[0]} (${topCategory[1].toFixed(2)}₸)` : 'Категорий расходов пока нет',
+            `Сообщений в чате: ${(dashboardState.messages || []).length}`,
+        ].join('\n');
+
+        alert(summary);
+    }
+
+    document.getElementById('chat-input').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            sendChatMessage();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeDeleteCompletedModal();
+            closeDeleteMonthlyExpensesModal();
+            closeAssistantModal();
+        }
+    });
+
+    document.getElementById('delete-completed-modal').addEventListener('click', function (event) {
+        if (event.target === event.currentTarget) {
+            closeDeleteCompletedModal();
+        }
+    });
+
+    document.getElementById('delete-monthly-expenses-modal').addEventListener('click', function (event) {
+        if (event.target === event.currentTarget) {
+            closeDeleteMonthlyExpensesModal();
+        }
+    });
+
+    document.getElementById('assistant-modal').addEventListener('click', function (event) {
+        if (event.target === event.currentTarget) {
+            closeAssistantModal();
+        }
+    });
 </script>
 
 {% endblock %}

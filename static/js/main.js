@@ -1,14 +1,29 @@
 // Конфигурация API
 const API_BASE = '/api';
-const CSRF_TOKEN = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (const cookie of cookies) {
+        const [cookieName, ...rest] = cookie.split('=');
+        if (cookieName === name) {
+            return decodeURIComponent(rest.join('='));
+        }
+    }
+    return '';
+}
+
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || getCookie('csrftoken') || '';
+}
 
 // Утилиты для работы с API
 async function apiCall(method, endpoint, data = null) {
+    const csrfToken = getCsrfToken();
     const options = {
         method,
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': CSRF_TOKEN,
+            'X-CSRFToken': csrfToken,
         }
     };
 
@@ -21,17 +36,38 @@ async function apiCall(method, endpoint, data = null) {
         if (!response.ok) {
             throw new Error(`HTTP Error: ${response.status}`);
         }
-        return await response.json();
+
+        if (response.status === 204) {
+            return null;
+        }
+
+        const responseText = await response.text();
+        if (!responseText) {
+            return null;
+        }
+
+        return JSON.parse(responseText);
     } catch (error) {
         console.error('API Error:', error);
         throw error;
     }
 }
 
+function unwrapListResponse(data) {
+    if (Array.isArray(data)) {
+        return data;
+    }
+    if (data && Array.isArray(data.results)) {
+        return data.results;
+    }
+    return [];
+}
+
 // Функции для работы с комнатами
 async function getRooms() {
     try {
-        return await apiCall('GET', '/rooms/');
+        const data = await apiCall('GET', '/rooms/');
+        return unwrapListResponse(data);
     } catch (error) {
         console.error('Ошибка при загрузке комнат:', error);
         return [];
@@ -47,7 +83,7 @@ async function createRoom(name, description) {
     }
 }
 
-async function joinRoom(code) {
+async function joinRoomRequest(code) {
     try {
         return await apiCall('POST', '/rooms/join_room/', { code });
     } catch (error) {
@@ -72,7 +108,8 @@ async function getTasks(roomId = null) {
         if (roomId) {
             endpoint += `?room=${roomId}`;
         }
-        return await apiCall('GET', endpoint);
+        const data = await apiCall('GET', endpoint);
+        return unwrapListResponse(data);
     } catch (error) {
         console.error('Ошибка при загрузке задач:', error);
         return [];
@@ -120,7 +157,8 @@ async function getExpenses(roomId = null) {
         if (roomId) {
             endpoint += `?room=${roomId}`;
         }
-        return await apiCall('GET', endpoint);
+        const data = await apiCall('GET', endpoint);
+        return unwrapListResponse(data);
     } catch (error) {
         console.error('Ошибка при загрузке расходов:', error);
         return [];
@@ -176,6 +214,9 @@ async function getRoomMembers(roomId) {
 // Функция для форматирования даты
 function formatDate(dateString) {
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+        return 'Без срока';
+    }
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -185,7 +226,7 @@ function formatDate(dateString) {
     } else if (date.toDateString() === tomorrow.toDateString()) {
         return `завтра, ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
     } else {
-        const days = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+        const days = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
         return `${days[date.getDay()]}, ${date.getDate()} ${getMonthName(date.getMonth())}`;
     }
 }
