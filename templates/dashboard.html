@@ -12,16 +12,14 @@
     {% else %}
     <div class="sidebar-avatar placeholder">?</div>
     {% endif %}
-    <div style="text-align:center;margin-bottom:20px;font-weight:600;">{{ user.get_full_name|default:user.username }}
-    </div>
+    <div class="sidebar-user-name">{{ user.get_full_name|default:user.username }}</div>
     {% endif %}
 
     <div class="room-title" id="room-name">{{ room.name }}</div>
 
     {% if rooms.count > 1 %}
-    <div style="margin-bottom: 20px;">
-        <select id="room-selector" title="Выбор комнаты" onchange="changeRoom(this.value)"
-            style="width: 100%; padding: 8px; border-radius: 8px; background: rgba(42,168,163,0.1); border: 1px solid var(--primary); color: var(--primary-dark); font-weight: 600;">
+    <div class="room-selector-wrap">
+        <select id="room-selector" class="room-selector" title="Выбор комнаты" onchange="changeRoom(this.value)">
             {% for r in rooms %}
             <option value="{{ r.id }}">{{ r.name }}</option>
             {% endfor %}
@@ -37,16 +35,14 @@
             {% if member.user.profile.avatar %}
             <img src="{{ member.user.profile.avatar.url }}" alt="{{ member.user.get_full_name }}">
             {% else %}
-            <div
-                style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
-                {{ member.user.first_name|first|upper }}</div>
+            <div class="member-avatar-fallback">{{ member.user.first_name|first|upper }}</div>
             {% endif %}
             <span>{{ member.user.get_full_name|default:member.user.username }}</span>
-            {% if member.is_admin %}<span style="font-size: 10px; opacity: 0.6; margin-left: auto;">👑</span>{% endif %}
+            {% if member.is_admin %}<span class="member-admin-badge">👑</span>{% endif %}
         </div>
         {% empty %}
         <div class="member">
-            <span style="opacity: 0.6;">Нет участников</span>
+            <span class="muted-text">Нет участников</span>
         </div>
         {% endfor %}
     </div>
@@ -55,6 +51,7 @@
         <a href="{% url 'home' %}" class="nav-item">🏠 Главная</a>
         {% if user.is_authenticated %}
         <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        <a href="{% url 'subscription' %}" class="nav-item">💎 Подписка</a>
         <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
         {% else %}
         <a href="{% url 'login' %}" class="nav-item">👤 Аккаунт</a>
@@ -64,24 +61,75 @@
 
 <!-- MAIN -->
 <main class="main">
+    <section class="card dashboard-insights-spotlight {% if show_insights_first %}is-priority{% endif %}">
+        <div class="dashboard-insights-header">
+            <div>
+                <div class="card-title">Сейчас</div>
+                <h2 class="insights-title">Спокойный обзор комнаты</h2>
+                <p class="insights-subtitle">{{ insights_preview.mood_overview.message }}</p>
+            </div>
+            <a href="{% url 'room-insights' room.id %}"
+                class="btn-secondary btn-secondary-link btn-inline-link dashboard-insights-link">Подробнее</a>
+        </div>
+
+        <div class="insights-metrics-grid">
+            {% for metric in insights_preview.headline_metrics %}
+            <div class="card insight-metric-card">
+                <div class="card-title">{{ metric.label }}</div>
+                <div class="insight-metric-value">{{ metric.value }}</div>
+                <div class="sub">{{ metric.note }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="dashboard-insights-grid">
+            <div class="dashboard-insights-list">
+                {% for achievement in insights_preview.achievements %}
+                <article class="dashboard-insights-chip">
+                    <span class="dashboard-insights-chip-icon">{{ achievement.icon }}</span>
+                    <div>
+                        <strong>{{ achievement.title }}</strong>
+                        <div>{{ achievement.winner }}</div>
+                        <small>{{ achievement.description }}</small>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="dashboard-insights-list">
+                {% for reminder in insights_preview.reminders|slice:":3" %}
+                <div class="dashboard-insights-note">🔔 {{ reminder }}</div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
     <!-- TOP CARDS -->
     <div class="top-cards">
         <div class="card stat">
-            <div class="card-title">ВЫПОЛНЕНО ЗАДАЧ</div>
+            <div class="card-title">Задачи</div>
             <div class="big-number" id="completed-tasks">0</div>
             <div class="sub">из <span id="total-tasks">0</span></div>
         </div>
 
         <div class="card stat">
-            <div class="card-title">ЕЖЕМЕСЯЧНЫЕ РАСХОДЫ</div>
+            <div class="card-title">Бюджет</div>
             <div class="circle">
                 <div class="inner"><span id="expenses-current">0</span>₸ / <span id="expenses-budget">0</span>₸</div>
             </div>
-            <div class="sub">Бюджет · Оценка: <span id="budget-status">загрузка</span></div>
+            <div class="budget-summary-row">
+                <span class="budget-summary-text">Бюджет · Оценка: <span id="budget-status">загрузка</span></span>
+                {% if show_budget_editor %}
+                <button type="button" class="btn-secondary budget-edit-btn" onclick="openBudgetModal()">
+                    <span class="budget-edit-btn-icon">✨</span>
+                    <span class="budget-edit-btn-label">Изменить сумму</span>
+                </button>
+                {% endif %}
+            </div>
         </div>
 
         <div class="card stat">
-            <div class="card-title">ВАШ БАЛАНС</div>
+            <div class="card-title">Баланс</div>
             <div class="score" id="user-balance">0₸</div>
             <div class="sub"><span id="balance-type">loading</span></div>
         </div>
@@ -90,8 +138,8 @@
     <!-- BOTTOM -->
     <div class="bottom-grid">
         <div class="card duties">
-            <div class="card-title">РАСПИСАНИЕ ЗАДАЧ</div>
-            <div class="quick-task-header">Быстрые задачи</div>
+            <div class="card-title">Задачи</div>
+            <div class="quick-task-header">Шаблоны</div>
             <div class="quick-task-grid" id="quick-task-grid">
                 <button class="quick-task-card"
                     onclick="createTaskTemplate('Уборка комнаты', 'Базовая уборка и наведение порядка', 'high')">
@@ -137,7 +185,7 @@
         </div>
 
         <div class="card inventory">
-            <div class="card-title">ГРУППОВОЙ ЧАТ</div>
+            <div class="card-title">Чат</div>
             <div id="chat-messages" class="chat-container">
                 <p class="loading">Загружение сообщений...</p>
             </div>
@@ -148,7 +196,7 @@
         </div>
 
         <div class="card expenses">
-            <div class="card-title">ПОСЛЕДНИЕ РАСХОДЫ</div>
+            <div class="card-title">Расходы</div>
             <div class="quick-expense-header">Услуга / категория</div>
             <div class="quick-expense-category-grid" id="expense-category-grid">
                 <button class="quick-expense-chip" data-category="Еда" onclick="selectExpenseCategory('Еда')">🍔
@@ -179,6 +227,12 @@
             <div id="expenses-list">
                 <p class="loading">Загружение расходов...</p>
             </div>
+            <div class="expense-history-block">
+                <div class="expense-history-title">История оплат</div>
+                <div id="expense-history-list">
+                    <p class="loading">История оплат пока пуста</p>
+                </div>
+            </div>
             <div class="expense-actions">
                 <button class="btn btn-small" onclick="addSelectedExpense()">+ Добавить по выбору</button>
                 <button class="btn-secondary btn-small btn-danger-soft" onclick="openDeleteMonthlyExpensesModal()">🗑️
@@ -186,27 +240,60 @@
             </div>
         </div>
 
+        <div class="card task-requests-panel">
+            <div class="task-requests-panel-head">
+                <div class="task-request-head-main">
+                    <div>
+                        <div class="card-title">Передача задач</div>
+                        <p class="task-request-board-subtitle">Активные запросы и история.</p>
+                    </div>
+                    <div class="task-request-head-actions">
+                        <div class="task-requests-panel-badge">Спокойно</div>
+                        <button id="clear-task-request-history-btn" class="btn-secondary btn-small history-clear-btn"
+                            onclick="clearTaskRequestHistory()">🗑️ Очистить историю</button>
+                    </div>
+                </div>
+            </div>
+            <div id="task-reassignment-list">
+                <p class="loading">Проверяю запросы на передачу задач...</p>
+            </div>
+        </div>
+
         <div class="card debts">
-            <div class="card-title">КТО КОМУ ДОЛЖЕН</div>
+            <div class="card-title">Долги</div>
+            <div class="loan-toolbar">
+                <button class="btn btn-small" onclick="createManualLoan()">+ Дать в долг</button>
+                <button class="btn-secondary btn-small" onclick="loadDashboardData()">↻ Обновить долги</button>
+            </div>
+            <div id="loan-reminders">
+                <p class="loading">Проверяю напоминания...</p>
+            </div>
             <div id="debts-list">
                 <p class="loading">Расчет долгов...</p>
             </div>
-            <div class="settlement-history-title">Последние погашения</div>
+            <div class="settlement-history-title">Ручные долги</div>
+            <div id="manual-loans-list">
+                <p class="loading">Ручные долги загружаются...</p>
+            </div>
+            <div class="settlement-history-title">Завершённые ручные долги</div>
+            <div id="completed-manual-loans-list">
+                <p class="loading">Загрузка завершённых долгов...</p>
+            </div>
+            <div class="settlement-history-header">
+                <div class="settlement-history-title">Последние погашения</div>
+                <button class="btn-secondary btn-small history-clear-btn" onclick="clearDebtHistory()">🗑️ Очистить
+                    историю</button>
+            </div>
             <div id="settlement-history-list">
                 <p class="loading">История погашений загружается...</p>
             </div>
-            <button class="btn btn-small" onclick="loadDashboardData()">↻ Обновить долги</button>
         </div>
 
         <div class="card settings">
-            <div class="card-title">УПРАВЛЕНИЕ</div>
-            <p style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;"><strong>Код комнаты:</strong> <code
-                    style="background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">{{ room.code }}</code>
-            </p>
+            <div class="card-title">Комната</div>
+            <p class="room-code-note"><strong>Код:</strong> <code>{{ room.code }}</code></p>
             <div class="settings-buttons">
-                <button class="btn-secondary" onclick="copyRoomCode()">📋 Скопировать код</button>
                 <button class="btn-secondary" onclick="openAssistantModal()">🤖 Помощник</button>
-                <button class="btn-secondary" onclick="showDailySummary()">📊 Сводка дня</button>
                 <button class="btn-secondary" onclick="completeMyTasks()">✅ Закрыть мои задачи</button>
                 {% if is_owner %}
                 <button class="btn-secondary" onclick="showSettingsForm()">⚙️ Настройки</button>
@@ -248,6 +335,86 @@
     </div>
 </div>
 
+<div id="monthly-budget-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="monthly-budget-title">
+        <div class="modal-title" id="monthly-budget-title">Ежемесячный бюджет комнаты</div>
+        <label for="monthly-budget-input" class="modal-label">Новая сумма (₸)</label>
+        <input id="monthly-budget-input" class="modal-input" type="number" min="0" step="100"
+            placeholder="Например, 50000">
+        <p class="modal-text">Эта сумма будет сравниваться с текущими расходами за месяц.</p>
+        <p class="modal-note">Оставьте `0`, если хотите убрать лимит и просто видеть факт расходов.</p>
+        <div class="modal-actions">
+            <button class="btn btn-small" onclick="saveBudgetAmount()">Сохранить</button>
+            <button class="btn-secondary btn-small" onclick="closeBudgetModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div id="manual-loan-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card manual-loan-modal-card" role="dialog" aria-modal="true" aria-labelledby="manual-loan-title">
+        <div class="modal-title" id="manual-loan-title">Дать в долг</div>
+        <p class="modal-text">Заполните карточку займа — всё будет выглядеть аккуратно и в стиле комнаты.</p>
+        <label for="manual-loan-borrower" class="modal-label">Кому</label>
+        <select id="manual-loan-borrower" class="modal-select"></select>
+        <label for="manual-loan-amount" class="modal-label">Сумма (₸)</label>
+        <input id="manual-loan-amount" class="modal-input" type="number" min="0" step="100"
+            placeholder="Например, 5000">
+        <label for="manual-loan-due-date" class="modal-label">Срок возврата</label>
+        <input id="manual-loan-due-date" class="modal-input" type="date">
+        <label for="manual-loan-note" class="modal-label">Комментарий</label>
+        <textarea id="manual-loan-note" class="modal-input modal-textarea"
+            placeholder="Например: на продукты, аренду или интернет"></textarea>
+        <p class="modal-note">Новая запись появится ниже красивой карточкой.</p>
+        <div class="modal-actions">
+            <button class="btn btn-small" onclick="submitManualLoan()">Сохранить</button>
+            <button class="btn-secondary btn-small" onclick="closeManualLoanModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div id="task-reassignment-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card task-reassignment-modal-card" role="dialog" aria-modal="true"
+        aria-labelledby="task-reassignment-title">
+        <div class="modal-title" id="task-reassignment-title">Передать задачу другому участнику</div>
+        <p class="modal-text" id="task-reassignment-task-title">Выберите, кому отправить запрос по этой задаче.</p>
+        <label for="task-reassignment-target" class="modal-label">Кому отправить</label>
+        <select id="task-reassignment-target" class="modal-select"></select>
+        <label for="task-reassignment-reason" class="modal-label">Причина</label>
+        <select id="task-reassignment-reason" class="modal-select">
+            <option value="illness">Заболел(а)</option>
+            <option value="family">Семейные обстоятельства</option>
+            <option value="exam">Экзамен / учёба</option>
+            <option value="work">Срочная работа</option>
+            <option value="trip">Отъезд / дорога</option>
+            <option value="other">Другая причина</option>
+        </select>
+        <label for="task-reassignment-message" class="modal-label">Комментарий</label>
+        <textarea id="task-reassignment-message" class="modal-input modal-textarea task-comment-field"
+            placeholder="Например: сегодня не успеваю, можешь подменить?"></textarea>
+        <p class="modal-note task-comment-helper">Комментарий будет показан участнику в аккуратной карточке запроса.</p>
+        <div class="modal-actions">
+            <button class="btn btn-small" onclick="submitTaskReassignmentRequest()">Отправить запрос</button>
+            <button class="btn-secondary btn-small" onclick="closeTaskReassignmentModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<div id="task-reassignment-response-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card task-reassignment-response-card" role="dialog" aria-modal="true"
+        aria-labelledby="task-reassignment-response-title">
+        <div class="modal-title" id="task-reassignment-response-title">Ответ на запрос</div>
+        <p class="modal-text" id="task-reassignment-response-text">Подтвердите решение по передаче задачи.</p>
+        <label for="task-reassignment-response-note" class="modal-label">Комментарий для участника</label>
+        <textarea id="task-reassignment-response-note" class="modal-input modal-textarea"
+            placeholder="Можно оставить короткий ответ"></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-small" id="task-reassignment-response-confirm"
+                onclick="confirmTaskReassignmentResponse()">Подтвердить</button>
+            <button class="btn-secondary btn-small" onclick="closeTaskReassignmentResponseModal()">Отмена</button>
+        </div>
+    </div>
+</div>
+
 <div id="assistant-modal" class="modal-overlay" aria-hidden="true">
     <div class="modal-card assistant-modal-card" role="dialog" aria-modal="true" aria-labelledby="assistant-title">
         <div class="modal-title" id="assistant-title">🤖 AI-помощник для общаги</div>
@@ -273,6 +440,14 @@
     const CURRENT_ROOM_ID = '{{ room.id }}';
     const CURRENT_ROOM_CODE = '{{ room.code }}';
     const CURRENT_USER_ID = Number('{{ user.id|default:0 }}');
+    const TASK_TRANSFER_REASON_LABELS = {
+        illness: 'Заболел(а)',
+        family: 'Семейные обстоятельства',
+        exam: 'Экзамен / учёба',
+        work: 'Срочная работа',
+        trip: 'Отъезд / дорога',
+        other: 'Другая причина',
+    };
     let dashboardState = {
         tasks: [],
         expenses: [],
@@ -280,10 +455,17 @@
         members: [],
         stats: null,
         debts: [],
+        manualLoans: [],
+        completedManualLoans: [],
+        loanNotifications: [],
         recentSettlements: [],
+        taskTransferRequests: [],
     };
     let selectedExpenseCategory = 'Прочее';
     let selectedExpenseAmount = null;
+    let activeTaskReassignmentTaskId = null;
+    let activeTaskReassignmentResponseId = null;
+    let activeTaskReassignmentDecision = null;
 
     // Загрузить данные при загрузке страницы
     document.addEventListener('DOMContentLoaded', function () {
@@ -331,6 +513,11 @@
 
         const selectedLabel = selectedExpenseAmount ? `${selectedExpenseAmount}₸` : 'сумма не выбрана';
         document.getElementById('quick-expense-selected').textContent = `Выбрано: ${selectedExpenseCategory} · ${selectedLabel}`;
+    }
+
+    function isSharedExpenseCategory(category) {
+        const normalized = String(category || '').trim().toLowerCase();
+        return normalized.includes('коммун');
     }
 
     function changeRoom(roomId) {
@@ -436,6 +623,296 @@
         const modal = document.getElementById('assistant-modal');
         modal.classList.remove('is-open');
         modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function getBudgetKey() {
+        return `cohub:budget:${CURRENT_ROOM_ID}`;
+    }
+
+    function openBudgetModal() {
+        const modal = document.getElementById('monthly-budget-modal');
+        const input = document.getElementById('monthly-budget-input');
+        const currentBudget = Number(localStorage.getItem(getBudgetKey()) || 0);
+
+        input.value = currentBudget > 0 ? currentBudget.toFixed(0) : '';
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        setTimeout(() => input.focus(), 20);
+    }
+
+    function closeBudgetModal() {
+        const modal = document.getElementById('monthly-budget-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function saveBudgetAmount() {
+        const input = document.getElementById('monthly-budget-input');
+        const value = (input.value || '').trim();
+        const parsed = value === '' ? 0 : Number(value);
+
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            showNotification('Введите корректную сумму', 'error');
+            input.focus();
+            return;
+        }
+
+        localStorage.setItem(getBudgetKey(), String(parsed));
+        closeBudgetModal();
+        renderStats();
+        showNotification(parsed > 0 ? `Бюджет сохранён: ${parsed.toFixed(0)}₸` : 'Лимит бюджета убран');
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatNoteText(value) {
+        return escapeHtml(value).replace(/\n/g, '<br>');
+    }
+
+    function getPendingTaskRequestForTask(taskId) {
+        return (dashboardState.taskTransferRequests || []).find(item => item.task && item.task.id === taskId && item.status === 'pending');
+    }
+
+    function openTaskReassignmentModal(taskId) {
+        const task = (dashboardState.tasks || []).find(item => item.id === taskId);
+        const members = (dashboardState.members || []).filter(member => Number(member.user.id) !== CURRENT_USER_ID);
+
+        if (!task) {
+            showNotification('Не удалось найти задачу', 'error');
+            return;
+        }
+        if (!members.length) {
+            showNotification('В комнате пока нет другого участника для передачи задачи', 'error');
+            return;
+        }
+        if (getPendingTaskRequestForTask(taskId)) {
+            showNotification('По этой задаче уже отправлен запрос', 'error');
+            return;
+        }
+
+        activeTaskReassignmentTaskId = taskId;
+        document.getElementById('task-reassignment-task-title').textContent = `Задача: ${task.title}`;
+        document.getElementById('task-reassignment-target').innerHTML = members.map(member => {
+            const name = member.user.first_name || member.user.username;
+            return `<option value="${member.user.id}">${name}</option>`;
+        }).join('');
+        document.getElementById('task-reassignment-reason').value = 'illness';
+        document.getElementById('task-reassignment-message').value = '';
+
+        const modal = document.getElementById('task-reassignment-modal');
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeTaskReassignmentModal() {
+        const modal = document.getElementById('task-reassignment-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        activeTaskReassignmentTaskId = null;
+    }
+
+    async function submitTaskReassignmentRequest() {
+        if (!activeTaskReassignmentTaskId) {
+            showNotification('Сначала выберите задачу', 'error');
+            return;
+        }
+
+        const requestedToId = Number(document.getElementById('task-reassignment-target').value || 0);
+        const reason = document.getElementById('task-reassignment-reason').value || 'other';
+        const customMessage = document.getElementById('task-reassignment-message').value.trim();
+
+        if (!requestedToId) {
+            showNotification('Выберите участника', 'error');
+            return;
+        }
+
+        try {
+            await apiCall('POST', '/task-reassignment-requests/', {
+                task_id: activeTaskReassignmentTaskId,
+                requested_to_id: requestedToId,
+                reason,
+                custom_message: customMessage,
+            });
+            closeTaskReassignmentModal();
+            showNotification('Запрос на передачу задачи отправлен');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification(error.message || 'Не удалось отправить запрос', 'error');
+        }
+    }
+
+    function openTaskReassignmentResponseModal(requestId, decision) {
+        const requestItem = (dashboardState.taskTransferRequests || []).find(item => item.id === requestId);
+        if (!requestItem) {
+            showNotification('Запрос не найден', 'error');
+            return;
+        }
+
+        activeTaskReassignmentResponseId = requestId;
+        activeTaskReassignmentDecision = decision;
+
+        const confirmButton = document.getElementById('task-reassignment-response-confirm');
+        const responseTitle = document.getElementById('task-reassignment-response-title');
+        const responseText = document.getElementById('task-reassignment-response-text');
+        const responseNote = document.getElementById('task-reassignment-response-note');
+        const taskTitle = requestItem.task_title || requestItem.task?.title || 'без названия';
+
+        if (decision === 'accept') {
+            responseTitle.textContent = 'Принять задачу';
+            responseText.textContent = `Задача: ${taskTitle}`;
+            responseNote.placeholder = 'Например: да, возьму на себя сегодня';
+            confirmButton.textContent = 'Принять задачу';
+            confirmButton.className = 'btn btn-small';
+        } else if (decision === 'cancel') {
+            responseTitle.textContent = 'Отменить запрос';
+            responseText.textContent = `Отменить запрос по задаче: ${taskTitle}`;
+            responseNote.placeholder = 'Например: уже успеваю сделать сам(а)';
+            confirmButton.textContent = 'Отменить запрос';
+            confirmButton.className = 'btn-secondary btn-small btn-danger-soft';
+        } else {
+            responseTitle.textContent = 'Отклонить запрос';
+            responseText.textContent = `Задача: ${taskTitle}`;
+            responseNote.placeholder = 'Например: сам(а) сейчас не успеваю';
+            confirmButton.textContent = 'Отклонить запрос';
+            confirmButton.className = 'btn btn-small';
+        }
+
+        responseNote.value = '';
+
+        const modal = document.getElementById('task-reassignment-response-modal');
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        setTimeout(() => responseNote.focus(), 20);
+    }
+
+    function closeTaskReassignmentResponseModal() {
+        const modal = document.getElementById('task-reassignment-response-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        activeTaskReassignmentResponseId = null;
+        activeTaskReassignmentDecision = null;
+    }
+
+    async function confirmTaskReassignmentResponse() {
+        if (!activeTaskReassignmentResponseId || !activeTaskReassignmentDecision) {
+            showNotification('Не удалось определить запрос', 'error');
+            return;
+        }
+
+        const responseNote = (document.getElementById('task-reassignment-response-note').value || '').trim();
+
+        try {
+            await apiCall('POST', `/task-reassignment-requests/${activeTaskReassignmentResponseId}/${activeTaskReassignmentDecision}/`, {
+                response_note: responseNote,
+            });
+            closeTaskReassignmentResponseModal();
+            const successMessage = activeTaskReassignmentDecision === 'accept'
+                ? 'Задача принята'
+                : (activeTaskReassignmentDecision === 'cancel' ? 'Запрос отменён' : 'Запрос отклонён');
+            showNotification(successMessage);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification(error.message || 'Не удалось обработать запрос', 'error');
+        }
+    }
+
+    function renderTaskReassignmentRequests() {
+        const container = document.getElementById('task-reassignment-list');
+        const clearButton = document.getElementById('clear-task-request-history-btn');
+        const requests = [...(dashboardState.taskTransferRequests || [])]
+            .sort((left, right) => {
+                const leftPriority = left.status === 'pending' ? 0 : 1;
+                const rightPriority = right.status === 'pending' ? 0 : 1;
+                if (leftPriority !== rightPriority) {
+                    return leftPriority - rightPriority;
+                }
+                return new Date(right.created_at || 0) - new Date(left.created_at || 0);
+            })
+            .slice(0, 8);
+        const hasHistory = requests.some(item => item.status && item.status !== 'pending');
+        const statusLabels = {
+            pending: 'Ожидает ответа',
+            accepted: 'Принят',
+            declined: 'Отклонён',
+            cancelled: 'Закрыт',
+        };
+
+        if (clearButton) {
+            clearButton.disabled = !hasHistory;
+        }
+
+        if (!requests.length) {
+            container.innerHTML = '<div class="task-request-empty">История чистая. Когда кто-то попросит передать задачу, карточка появится здесь.</div>';
+            return;
+        }
+
+        container.innerHTML = requests.map(item => {
+            const status = item.status || 'pending';
+            const isIncoming = Number(item.requested_to?.id) === CURRENT_USER_ID;
+            const isOutgoing = Number(item.requested_by?.id) === CURRENT_USER_ID;
+            const actorName = escapeHtml(
+                isIncoming
+                    ? (item.requested_by?.first_name || item.requested_by?.username || 'участника')
+                    : (item.requested_to?.first_name || item.requested_to?.username || 'участника')
+            );
+            const actorLabel = isIncoming ? 'От' : 'Кому';
+            const reasonLabel = escapeHtml(item.reason_display || TASK_TRANSFER_REASON_LABELS[item.reason] || 'Причина не указана');
+            const createdLabel = item.created_at ? `Создано: ${escapeHtml(formatDate(item.created_at))}` : '';
+            const customMessage = item.custom_message
+                ? `<div class="task-request-note">
+                        <div class="task-request-note-label">Комментарий</div>
+                        <div class="task-request-note-text">${formatNoteText(item.custom_message)}</div>
+                   </div>`
+                : '';
+            const responseNote = item.response_note
+                ? `<div class="task-request-response">
+                        <div class="task-request-note-label">Ответ участника</div>
+                        <div class="task-request-note-text">${formatNoteText(item.response_note)}</div>
+                   </div>`
+                : '';
+            const actions = isIncoming && status === 'pending'
+                ? `<div class="task-request-actions">
+                        <button class="btn btn-small task-request-action-btn" onclick="openTaskReassignmentResponseModal('${item.id}', 'accept')">Принять</button>
+                        <button class="btn-secondary btn-small task-request-action-btn" onclick="openTaskReassignmentResponseModal('${item.id}', 'decline')">Отклонить</button>
+                   </div>`
+                : (isOutgoing && status === 'pending'
+                    ? `<div class="task-request-actions">
+                            <button class="btn-secondary btn-small task-request-action-btn btn-danger-soft" onclick="openTaskReassignmentResponseModal('${item.id}', 'cancel')">Отменить запрос</button>
+                       </div>`
+                    : '');
+            const sideLabel = isIncoming ? 'Входящий запрос' : (isOutgoing ? 'Ваш запрос' : 'Запрос по комнате');
+            const messageIcon = isIncoming ? '📩' : '📤';
+
+            return `
+                <article class="task-request-item ${isIncoming ? 'is-incoming' : ''}">
+                    <div class="task-request-topline">
+                        <div class="task-request-side-group">
+                            <div class="task-request-avatar">${messageIcon}</div>
+                            <div>
+                                <div class="task-request-side-label">${sideLabel}</div>
+                                ${createdLabel ? `<div class="task-request-time">${createdLabel}</div>` : ''}
+                            </div>
+                        </div>
+                        <span class="task-request-status is-${status}">${statusLabels[status] || status}</span>
+                    </div>
+                    <div class="task-request-title">${escapeHtml(item.task_title || item.task?.title || 'Задача')}</div>
+                    <div class="task-request-meta-row">
+                        <span class="task-request-chip">${actorLabel}: ${actorName}</span>
+                        <span class="task-request-chip">Причина: ${reasonLabel}</span>
+                    </div>
+                    ${customMessage}
+                    ${responseNote}
+                    ${actions}
+                </article>
+            `;
+        }).join('');
     }
 
     function renderAssistantList(title, items) {
@@ -545,24 +1022,37 @@
 
     async function loadDashboardData() {
         try {
-            const [tasks, expenses, stats, members] = await Promise.all([
+            const [tasks, expenses, stats, members, taskTransferRequests] = await Promise.all([
                 getTasks(CURRENT_ROOM_ID),
                 getExpenses(CURRENT_ROOM_ID),
                 getRoomStats(CURRENT_ROOM_ID),
                 getRoomMembers(CURRENT_ROOM_ID),
+                apiCall('GET', `/task-reassignment-requests/?room=${CURRENT_ROOM_ID}`),
             ]);
 
             dashboardState.tasks = tasks;
             dashboardState.expenses = expenses;
             dashboardState.stats = stats;
             dashboardState.members = members;
+            dashboardState.taskTransferRequests = unwrapListResponse(taskTransferRequests);
             dashboardState.debts = Array.isArray(stats?.debts) ? stats.debts : deriveDebtTransfers(stats?.balances || {});
+            let manualLoans = Array.isArray(stats?.manual_loans) ? stats.manual_loans : null;
+            if (manualLoans === null) {
+                manualLoans = await getRoomManualLoans(CURRENT_ROOM_ID);
+            }
+            dashboardState.manualLoans = manualLoans;
+            dashboardState.completedManualLoans = (manualLoans || []).filter(loan => Number(loan.remaining_amount) <= 0);
+            dashboardState.loanNotifications = Array.isArray(stats?.loan_notifications) ? stats.loan_notifications : [];
             dashboardState.recentSettlements = Array.isArray(stats?.recent_settlements) ? stats.recent_settlements : [];
 
             renderStats();
             renderTasks();
+            renderTaskReassignmentRequests();
             renderExpenses();
+            renderLoanNotifications();
             renderDebts();
+            renderManualLoans();
+            renderCompletedManualLoans();
             renderSettlementHistory();
             renderMembers();
             await loadChatMessages();
@@ -582,8 +1072,7 @@
             .filter(e => new Date(e.date).getMonth() === currentMonth)
             .reduce((sum, e) => sum + Number(e.amount), 0);
 
-        const budgetKey = `cohub:budget:${CURRENT_ROOM_ID}`;
-        const budget = Number(localStorage.getItem(budgetKey) || 0);
+        const budget = Number(localStorage.getItem(getBudgetKey()) || 0);
 
         document.getElementById('completed-tasks').textContent = completed;
         document.getElementById('total-tasks').textContent = total;
@@ -617,6 +1106,13 @@
             const assignee = task.assigned_to ? (task.assigned_to.first_name || task.assigned_to.username) : 'Не назначен';
             const statusText = task.status === 'completed' ? '✅ Готово' : (task.status === 'in_progress' ? '⏳ В процессе' : '🕓 Ожидает');
             const due = task.due_date ? formatDate(task.due_date) : 'Без срока';
+            const pendingTransfer = getPendingTaskRequestForTask(task.id);
+            const canRequestTransfer = task.status !== 'completed'
+                && task.assigned_to
+                && Number(task.assigned_to.id) === CURRENT_USER_ID
+                && (dashboardState.members || []).length > 1;
+            const canComplete = Boolean(task.can_complete);
+            const completionHint = escapeHtml(task.completion_hint || 'Завершить задачу может только её создатель или участник после передачи');
 
             return `
                 <tr>
@@ -624,9 +1120,14 @@
                     <td>${due}</td>
                     <td>${assignee}</td>
                     <td>
-                        ${statusText}
-                        ${task.status === 'completed' ? `<button class="btn-secondary task-delete-btn" onclick="deleteTaskById('${task.id}')">Удалить</button>` : ''}
-                        ${task.status !== 'completed' ? `<button class="btn btn-small" style="margin-left:8px;padding:4px 8px;font-size:11px;" onclick="completeTaskFromUI('${task.id}')">Готово</button>` : ''}
+                        <div class="task-status-line">${statusText}</div>
+                        <div class="task-row-actions">
+                            ${task.status === 'completed' ? `<button class="btn-secondary task-delete-btn" onclick="deleteTaskById('${task.id}')">Удалить</button>` : ''}
+                            ${task.status !== 'completed' && canComplete ? `<button class="btn btn-small task-inline-action" onclick="completeTaskFromUI('${task.id}')">Готово</button>` : ''}
+                            ${task.status !== 'completed' && !canComplete ? `<span class="task-transfer-tag" title="${completionHint}">Только создатель</span>` : ''}
+                            ${canRequestTransfer && !pendingTransfer ? `<button class="btn-secondary task-transfer-btn" onclick="openTaskReassignmentModal('${task.id}')">Передать</button>` : ''}
+                            ${canRequestTransfer && pendingTransfer ? `<span class="task-transfer-tag">Запрос отправлен</span>` : ''}
+                        </div>
                     </td>
                 </tr>
             `;
@@ -635,46 +1136,100 @@
 
     function renderExpenses() {
         const container = document.getElementById('expenses-list');
+        const historyContainer = document.getElementById('expense-history-list');
         const expenses = dashboardState.expenses || [];
+        const isSettledExpense = expense => Array.isArray(expense.shares)
+            && expense.shares.length > 0
+            && expense.shares.every(share => share.is_settled);
+        const activeExpenses = expenses.filter(expense => !isSettledExpense(expense));
+        const settledExpenses = expenses.filter(expense => isSettledExpense(expense));
 
-        if (!expenses.length) {
+        if (!activeExpenses.length) {
             container.innerHTML = '<p class="loading">Расходов пока нет</p>';
+        }
+
+        if (activeExpenses.length) {
+            container.innerHTML = activeExpenses.slice(0, 8).map(expense => {
+                const payer = expense.is_shared
+                    ? 'Общий расход'
+                    : (expense.paid_by ? (expense.paid_by.first_name || expense.paid_by.username) : 'Неизвестно');
+                const amountValue = Number(expense.amount) || 0;
+                const amountLabel = Number.isInteger(amountValue)
+                    ? `${amountValue}₸`
+                    : `${amountValue.toFixed(2)}₸`;
+                const hasUnsettledShares = (expense.shares || []).some(share => !share.is_settled);
+                return `
+                    <div class="expense-item">
+                        <div class="expense-meta">
+                            <strong>${expense.description}</strong><br>
+                            <small>${expense.category} · ${payer}</small>
+                        </div>
+                        <div class="expense-controls">
+                            <div class="expense-amount">${amountLabel}</div>
+                            <button class="btn-secondary expense-paid-btn" onclick="markExpenseAsPaid('${expense.id}')" ${hasUnsettledShares ? '' : 'disabled'}>Оплачено</button>
+                            <button class="btn-secondary expense-delete-btn" onclick="deleteExpenseById('${expense.id}')">Удалить</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        if (!historyContainer) {
             return;
         }
 
-        container.innerHTML = expenses.slice(0, 8).map(expense => {
-            const payer = expense.paid_by ? (expense.paid_by.first_name || expense.paid_by.username) : 'Неизвестно';
+        if (!settledExpenses.length) {
+            historyContainer.innerHTML = '<p class="loading">История оплат пока пуста</p>';
+            return;
+        }
+
+        historyContainer.innerHTML = settledExpenses.slice(0, 8).map(expense => {
+            const amountValue = Number(expense.amount) || 0;
+            const amountLabel = Number.isInteger(amountValue)
+                ? `${amountValue}₸`
+                : `${amountValue.toFixed(2)}₸`;
+            const paidAt = expense.updated_at || expense.created_at || '';
+            const paidAtLabel = paidAt
+                ? new Date(paidAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                : 'дата не указана';
             return `
-                <div class="expense-item">
-                    <div class="expense-meta">
-                        <strong>${expense.description}</strong><br>
-                        <small>${expense.category} · ${payer}</small>
+                <div class="expense-history-item">
+                    <div class="expense-history-left">
+                        <div class="expense-history-main">${expense.description}</div>
+                        <div class="expense-history-meta">${expense.category} · ${paidAtLabel}</div>
                     </div>
-                    <div class="expense-controls">
-                        <div class="expense-amount">${Number(expense.amount).toFixed(2)}₸</div>
-                        <button class="btn-secondary expense-delete-btn" onclick="deleteExpenseById('${expense.id}')">Удалить</button>
+                    <div class="expense-history-right">
+                        <span class="expense-history-status">Оплачено</span>
+                        <div class="expense-history-amount">${amountLabel}</div>
                     </div>
                 </div>
             `;
         }).join('');
     }
 
-    async function addSelectedExpense() {
+    async function addSelectedExpense(markAsPaid = false) {
         if (!selectedExpenseAmount) {
             showNotification('Выберите сумму расхода', 'error');
             return;
         }
+
+        const sharedWithRoom = isSharedExpenseCategory(selectedExpenseCategory);
+        const paidById = sharedWithRoom ? null : CURRENT_USER_ID;
 
         try {
             await createExpense(
                 CURRENT_ROOM_ID,
                 selectedExpenseCategory,
                 Number(selectedExpenseAmount),
-                CURRENT_USER_ID,
+                paidById,
                 selectedExpenseCategory,
-                []
+                [],
+                sharedWithRoom,
+                markAsPaid
             );
-            showNotification(`Добавлен расход: ${selectedExpenseCategory} ${selectedExpenseAmount}₸`);
+            const sharedLabel = sharedWithRoom ? ' (общий)' : '';
+            const paidLabel = markAsPaid ? ' · оплачено' : '';
+            showNotification(`Добавлен расход: ${selectedExpenseCategory}${sharedLabel} ${selectedExpenseAmount}₸${paidLabel}`);
             await loadDashboardData();
         } catch (error) {
             showNotification('Не удалось добавить расход', 'error');
@@ -688,6 +1243,33 @@
             await loadDashboardData();
         } catch (error) {
             showNotification('Не удалось удалить расход', 'error');
+        }
+    }
+
+    async function markExpenseAsPaid(expenseId) {
+        const expenses = dashboardState.expenses || [];
+        const expense = expenses.find(item => String(item.id) === String(expenseId));
+
+        if (!expense) {
+            showNotification('Расход не найден', 'error');
+            return;
+        }
+
+        const unsettledShareIds = (expense.shares || [])
+            .filter(share => !share.is_settled)
+            .map(share => share.id);
+
+        if (!unsettledShareIds.length) {
+            showNotification('Этот расход уже оплачен');
+            return;
+        }
+
+        try {
+            await Promise.all(unsettledShareIds.map(shareId => settleExpenseShare(shareId)));
+            showNotification('Расход отмечен как оплачено');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось отметить расход как оплачено', 'error');
         }
     }
 
@@ -738,6 +1320,46 @@
         return transfers;
     }
 
+    function renderLoanNotifications() {
+        const container = document.getElementById('loan-reminders');
+        const notifications = dashboardState.loanNotifications || [];
+
+        if (!notifications.length) {
+            container.innerHTML = '<p class="loan-notification-empty">Напоминаний по ручным долгам пока нет ✅</p>';
+            return;
+        }
+
+        container.innerHTML = notifications.map(item => `
+            <div class="loan-notification-item">⏰ ${item}</div>
+        `).join('');
+    }
+
+    function getLoanStatusLabel(status) {
+        if (status === 'overdue') return 'Просрочен';
+        if (status === 'partially_paid') return 'Частично погашен';
+        if (status === 'paid') return 'Закрыт';
+        return 'Активен';
+    }
+
+    function formatLoanDueDate(loan) {
+        if (!loan.due_date) {
+            return 'Срок не указан';
+        }
+        const dueDate = new Date(loan.due_date);
+        const today = new Date();
+        const diffDays = Math.floor((dueDate - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+        if (diffDays < 0) {
+            return `Просрочен на ${Math.abs(diffDays)} дн.`;
+        }
+        if (diffDays === 0) {
+            return 'Срок возврата: сегодня';
+        }
+        if (diffDays === 1) {
+            return 'Срок возврата: завтра';
+        }
+        return `Срок возврата: ${loan.due_date}`;
+    }
+
     function renderDebts() {
         const container = document.getElementById('debts-list');
         const debts = dashboardState.debts || [];
@@ -750,10 +1372,119 @@
         container.innerHTML = debts.map(item => `
             <div class="debt-item">
                 <div class="debt-route"><strong>${item.from_name || item.from}</strong> → <strong>${item.to_name || item.to}</strong></div>
-                <div class="debt-amount">${item.amount.toFixed(2)}₸</div>
+                <div class="debt-amount">${Number(item.amount).toFixed(2)}₸</div>
                 ${item.from_user_id && item.to_user_id ? `<button class="btn-secondary debt-settle-btn" onclick="settleDebt('${item.from_user_id}', '${item.to_user_id}')">Погашено</button>` : ''}
             </div>
         `).join('');
+    }
+
+    function renderManualLoans() {
+        const container = document.getElementById('manual-loans-list');
+        const loans = (dashboardState.manualLoans || []).filter(loan => Number(loan.remaining_amount) > 0);
+
+        if (!loans.length) {
+            container.innerHTML = '<div class="manual-loan-empty">Активных ручных долгов нет. Когда вы дадите деньги в долг, карточка появится здесь.</div>';
+            return;
+        }
+
+        container.innerHTML = loans.map(loan => {
+            const totalAmount = Number(loan.amount_total || 0);
+            const returnedAmount = Number(loan.amount_returned || 0);
+            const remainingAmount = Number(loan.remaining_amount || 0);
+            const progressPercent = totalAmount > 0
+                ? Math.max(0, Math.min(100, Math.round((returnedAmount / totalAmount) * 100)))
+                : 0;
+            const dueText = escapeHtml(formatLoanDueDate(loan));
+            const safeFrom = escapeHtml(loan.from_name || 'Участник');
+            const safeTo = escapeHtml(loan.to_name || 'Участник');
+            const safeNote = loan.note ? escapeHtml(loan.note) : '';
+
+            return `
+                <div class="manual-loan-item ${loan.is_overdue ? 'is-overdue' : ''}">
+                    <div class="manual-loan-top">
+                        <div class="manual-loan-route-wrap">
+                            <div class="manual-loan-caption">Ручной долг</div>
+                            <div class="manual-loan-route"><strong>${safeFrom}</strong><span class="manual-loan-arrow">→</span><strong>${safeTo}</strong></div>
+                        </div>
+                        <div class="manual-loan-top-side">
+                            <span class="loan-status-badge loan-status-${loan.status}">${getLoanStatusLabel(loan.status)}</span>
+                            <div class="manual-loan-amount-pill">${remainingAmount.toFixed(2)}₸</div>
+                        </div>
+                    </div>
+
+                    <div class="manual-loan-progress-wrap">
+                        <div class="manual-loan-progress-label">
+                            <span>Возвращено ${progressPercent}%</span>
+                            <span>${returnedAmount.toFixed(2)}₸ / ${totalAmount.toFixed(2)}₸</span>
+                        </div>
+                        <div class="manual-loan-progress">
+                            <span class="manual-loan-progress-fill" style="width:${progressPercent}%"></span>
+                        </div>
+                    </div>
+
+                    <div class="manual-loan-meta-grid">
+                        <span class="manual-loan-chip">Осталось: <strong>${remainingAmount.toFixed(2)}₸</strong></span>
+                        <span class="manual-loan-chip ${loan.is_overdue ? 'is-danger' : ''}">${dueText}</span>
+                    </div>
+
+                    ${safeNote ? `<div class="manual-loan-note">💬 ${safeNote}</div>` : ''}
+
+                    <div class="manual-loan-actions">
+                        <button class="btn btn-small loan-action-btn" onclick="addLoanPayment('${loan.id}', ${remainingAmount})">💸 Вернуть часть</button>
+                        <button class="btn-secondary btn-small loan-action-btn" onclick="sendLoanReminder('${loan.id}')">🔔 Напомнить</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderCompletedManualLoans() {
+        const container = document.getElementById('completed-manual-loans-list');
+        const loans = dashboardState.completedManualLoans || [];
+
+        if (!loans.length) {
+            container.innerHTML = '<div class="manual-loan-empty">Пока завершённых долгов нет.</div>';
+            return;
+        }
+
+        container.innerHTML = loans.map(loan => {
+            const totalAmount = Number(loan.amount_total || 0);
+            const returnedAmount = Number(loan.amount_returned || 0);
+            const remainingAmount = Number(loan.remaining_amount || 0);
+            const safeFrom = escapeHtml(loan.from_name || 'Участник');
+            const safeTo = escapeHtml(loan.to_name || 'Участник');
+            const safeNote = loan.note ? escapeHtml(loan.note) : '';
+
+            return `
+                <div class="manual-loan-item is-completed">
+                    <div class="manual-loan-top">
+                        <div class="manual-loan-route-wrap">
+                            <div class="manual-loan-caption">Завершённый ручной долг</div>
+                            <div class="manual-loan-route"><strong>${safeFrom}</strong><span class="manual-loan-arrow">→</span><strong>${safeTo}</strong></div>
+                        </div>
+                        <div class="manual-loan-top-side">
+                            <span class="loan-status-badge loan-status-paid">Завершено</span>
+                            <div class="manual-loan-amount-pill">${remainingAmount.toFixed(2)}₸</div>
+                        </div>
+                    </div>
+
+                    <div class="manual-loan-progress-wrap">
+                        <div class="manual-loan-progress-label">
+                            <span>Вернули ${returnedAmount.toFixed(2)}₸ / ${totalAmount.toFixed(2)}₸</span>
+                        </div>
+                        <div class="manual-loan-progress">
+                            <span class="manual-loan-progress-fill" style="width:100%"></span>
+                        </div>
+                    </div>
+
+                    ${safeNote ? `<div class="manual-loan-note">💬 ${safeNote}</div>` : ''}
+
+                    <div class="manual-loan-actions">
+                        <button class="btn-secondary btn-small loan-action-btn" onclick="deleteCompletedLoan('${loan.id}')">🗑️ Удалить</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     async function settleDebt(fromUserId, toUserId) {
@@ -773,6 +1504,142 @@
             await loadDashboardData();
         } catch (error) {
             showNotification('Не удалось отметить долг как погашенный', 'error');
+        }
+    }
+
+    async function createManualLoan() {
+        try {
+            if (!(dashboardState.members || []).length) {
+                await loadDashboardData();
+            }
+        } catch (error) {
+            console.error('Не удалось загрузить участников комнаты:', error);
+            showNotification('Не удалось загрузить участников комнаты. Попробуйте обновить страницу.', 'error');
+            return;
+        }
+
+        const otherMembers = (dashboardState.members || []).filter(member => {
+            const userId = Number(member?.user?.id ?? member?.id ?? member?.user_id ?? 0);
+            return Number.isFinite(userId) && userId !== CURRENT_USER_ID;
+        });
+
+        if (!otherMembers.length) {
+            showNotification('В комнате нет другого участника для выдачи долга', 'error');
+            return;
+        }
+
+        const borrowerSelect = document.getElementById('manual-loan-borrower');
+        if (!borrowerSelect) {
+            showNotification('Форма выдачи долга не найдена на странице', 'error');
+            return;
+        }
+
+        borrowerSelect.innerHTML = otherMembers.map(member => {
+            const user = member?.user || member;
+            const name = user?.first_name || user?.username || user?.name || 'Участник';
+            const id = user?.id || member?.user_id || member?.id || '';
+            return `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`;
+        }).join('');
+
+        const amountInput = document.getElementById('manual-loan-amount');
+        const dueDateInput = document.getElementById('manual-loan-due-date');
+        const noteInput = document.getElementById('manual-loan-note');
+
+        if (amountInput) amountInput.value = '';
+        if (dueDateInput) dueDateInput.value = '';
+        if (noteInput) noteInput.value = '';
+
+        const modal = document.getElementById('manual-loan-modal');
+        if (modal) {
+            modal.classList.add('is-open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+        setTimeout(() => document.getElementById('manual-loan-amount')?.focus(), 20);
+    }
+
+    function closeManualLoanModal() {
+        const modal = document.getElementById('manual-loan-modal');
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function submitManualLoan() {
+        const borrowerId = Number(document.getElementById('manual-loan-borrower').value || '');
+        const amountRaw = (document.getElementById('manual-loan-amount').value || '').replace(',', '.').trim();
+        const amount = Number(amountRaw);
+        const dueDate = (document.getElementById('manual-loan-due-date').value || '').trim();
+        const note = (document.getElementById('manual-loan-note').value || '').trim();
+
+        if (!borrowerId) {
+            showNotification('Выберите участника', 'error');
+            return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showNotification('Введите корректную сумму долга', 'error');
+            return;
+        }
+
+        try {
+            await apiCall('POST', '/loans/', {
+                room: CURRENT_ROOM_ID,
+                borrower_id: borrowerId,
+                amount_total: amount.toFixed(2),
+                due_date: dueDate || null,
+                note,
+            });
+            closeManualLoanModal();
+            showNotification('Ручной долг добавлен');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification(error?.message || 'Не удалось создать ручной долг', 'error');
+        }
+    }
+
+    async function addLoanPayment(loanId, remainingAmount) {
+        const amountRaw = (prompt(`Сколько денег вернули? Остаток: ${Number(remainingAmount).toFixed(2)}₸`) || '').replace(',', '.').trim();
+        const amount = Number(amountRaw);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showNotification('Введите корректную сумму возврата', 'error');
+            return;
+        }
+
+        const note = (prompt('Комментарий к возврату (необязательно):') || '').trim();
+
+        try {
+            const result = await apiCall('POST', '/loan-payments/', {
+                loan_id: loanId,
+                amount: amount.toFixed(2),
+                note,
+            });
+            showNotification(`Возврат записан. Осталось: ${result.loan_remaining_amount}₸`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось записать возврат по долгу', 'error');
+        }
+    }
+
+    async function sendLoanReminder(loanId) {
+        try {
+            const result = await apiCall('POST', `/loans/${loanId}/send_reminder/`, {});
+            showNotification(result.message || 'Напоминание отмечено');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось отправить напоминание по долгу', 'error');
+        }
+    }
+
+    async function deleteCompletedLoan(loanId) {
+        const confirmed = confirm('Удалить этот завершённый долг? Это действие необратимо.');
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await apiCall('DELETE', `/loans/${loanId}/`);
+            showNotification('Завершённый долг удалён');
+            await loadDashboardData();
+        } catch (error) {
+            showNotification('Не удалось удалить завершённый долг', 'error');
         }
     }
 
@@ -796,6 +1663,51 @@
                 </div>
             `;
         }).join('');
+    }
+
+    async function clearTaskRequestHistory() {
+        const requests = Array.isArray(dashboardState.taskTransferRequests) ? dashboardState.taskTransferRequests : [];
+        const hasHistory = requests.some(item => item.status && item.status !== 'pending');
+        if (!hasHistory) {
+            showNotification('История запросов уже пустая');
+            return;
+        }
+
+        const confirmed = confirm('Очистить историю завершённых запросов? Активные запросы останутся на месте.');
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const result = await apiCall('POST', '/task-reassignment-requests/clear_history/', {
+                room: CURRENT_ROOM_ID,
+            });
+            showNotification(result.message || `Удалено записей: ${result.deleted_count || 0}`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification(error?.message || 'Не удалось очистить историю запросов', 'error');
+        }
+    }
+
+    async function clearDebtHistory() {
+        const hasHistory = Array.isArray(dashboardState.recentSettlements) && dashboardState.recentSettlements.length > 0;
+        if (!hasHistory) {
+            showNotification('История долгов уже пустая');
+            return;
+        }
+
+        const confirmed = confirm('Очистить историю погашений долгов? Активные долги останутся, но записи о прошлых возвратах будут удалены.');
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const result = await apiCall('POST', `/rooms/${CURRENT_ROOM_ID}/clear_debt_history/`, {});
+            showNotification(`История очищена: платежей ${result.deleted_payments}, записей ${result.deleted_settlements}`);
+            await loadDashboardData();
+        } catch (error) {
+            showNotification(error?.message || 'Не удалось очистить историю долгов', 'error');
+        }
     }
 
     async function confirmDeleteMonthlyExpenses() {
@@ -851,7 +1763,7 @@
             showNotification('Задача отмечена как выполненная');
             await loadDashboardData();
         } catch (error) {
-            showNotification('Не удалось обновить задачу', 'error');
+            showNotification(error?.message || 'Не удалось обновить задачу', 'error');
         }
     }
 
@@ -943,13 +1855,18 @@
         }
 
         const category = (prompt('Категория (еда, быт, интернет и т.д.):') || 'прочее').trim() || 'прочее';
-        const payerRaw = (prompt('ID того, кто оплатил (пусто = вы):') || '').trim();
-        const parsedPayer = Number(payerRaw);
-        const paidById = Number.isInteger(parsedPayer) && parsedPayer > 0 ? parsedPayer : CURRENT_USER_ID;
+        const sharedWithRoom = isSharedExpenseCategory(category);
+        let paidById = null;
+        if (!sharedWithRoom) {
+            const payerRaw = (prompt('ID того, кто оплатил (пусто = вы):') || '').trim();
+            const parsedPayer = Number(payerRaw);
+            paidById = Number.isInteger(parsedPayer) && parsedPayer > 0 ? parsedPayer : CURRENT_USER_ID;
+        }
 
         try {
-            await createExpense(CURRENT_ROOM_ID, description.trim(), amount, paidById, category.trim(), []);
-            showNotification('Расход добавлен');
+            const markAsPaid = Boolean(confirm('Пометить этот расход как оплаченный сразу?'));
+            await createExpense(CURRENT_ROOM_ID, description.trim(), amount, paidById, category.trim(), [], sharedWithRoom, markAsPaid);
+            showNotification(markAsPaid ? 'Расход добавлен как оплаченный' : (sharedWithRoom ? 'Общий расход добавлен' : 'Расход добавлен'));
             await loadDashboardData();
         } catch (error) {
             showNotification('Ошибка создания расхода', 'error');
@@ -957,20 +1874,7 @@
     }
 
     function showSettingsForm() {
-        const budgetKey = `cohub:budget:${CURRENT_ROOM_ID}`;
-        const current = localStorage.getItem(budgetKey) || '0';
-        const nextBudget = prompt('Месячный бюджет комнаты (₸):', current);
-        if (nextBudget === null) return;
-
-        const parsed = Number(nextBudget);
-        if (Number.isNaN(parsed) || parsed < 0) {
-            showNotification('Некорректный бюджет', 'error');
-            return;
-        }
-
-        localStorage.setItem(budgetKey, String(parsed));
-        showNotification('Бюджет сохранён');
-        renderStats();
+        openBudgetModal();
     }
 
     async function copyRoomCode() {
@@ -1042,9 +1946,16 @@
     }
 
     async function completeMyTasks() {
-        const myTasks = (dashboardState.tasks || []).filter(t => t.status !== 'completed' && t.assigned_to && t.assigned_to.id === CURRENT_USER_ID);
+        const allTasks = dashboardState.tasks || [];
+        const myTasks = allTasks.filter(t => t.status !== 'completed' && Boolean(t.can_complete));
+        const blockedAssignedTasks = allTasks.filter(t => t.status !== 'completed' && t.assigned_to && t.assigned_to.id === CURRENT_USER_ID && !t.can_complete);
+
         if (!myTasks.length) {
-            showNotification('У вас нет незавершённых задач');
+            showNotification(
+                blockedAssignedTasks.length
+                    ? 'Эти задачи сможет закрыть только создатель или участник после передачи'
+                    : 'У вас нет незавершённых задач'
+            );
             return;
         }
 
@@ -1053,7 +1964,7 @@
             showNotification(`Закрыто задач: ${myTasks.length}`);
             await loadDashboardData();
         } catch (error) {
-            showNotification('Ошибка массового закрытия', 'error');
+            showNotification(error?.message || 'Ошибка массового закрытия', 'error');
         }
     }
 
@@ -1090,6 +2001,9 @@
         if (event.key === 'Escape') {
             closeDeleteCompletedModal();
             closeDeleteMonthlyExpensesModal();
+            closeBudgetModal();
+            closeTaskReassignmentModal();
+            closeTaskReassignmentResponseModal();
             closeAssistantModal();
         }
     });

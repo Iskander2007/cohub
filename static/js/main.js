@@ -33,20 +33,29 @@ async function apiCall(method, endpoint, data = null) {
 
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, options);
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
-        if (response.status === 204) {
-            return null;
-        }
-
         const responseText = await response.text();
-        if (!responseText) {
+
+        let payload = null;
+        if (responseText) {
+            try {
+                payload = JSON.parse(responseText);
+            } catch {
+                payload = responseText;
+            }
+        }
+
+        if (!response.ok) {
+            const errorMessage = (payload && (payload.error || payload.detail || payload.message))
+                || (typeof payload === 'string' && payload)
+                || `HTTP Error: ${response.status}`;
+            throw new Error(errorMessage);
+        }
+
+        if (response.status === 204 || !responseText) {
             return null;
         }
 
-        return JSON.parse(responseText);
+        return payload;
     } catch (error) {
         console.error('API Error:', error);
         throw error;
@@ -98,6 +107,16 @@ async function getRoomStats(roomId) {
     } catch (error) {
         console.error('Ошибка при загрузке статистики:', error);
         return null;
+    }
+}
+
+async function getRoomManualLoans(roomId) {
+    try {
+        const data = await apiCall('GET', `/loans/?room=${roomId}`);
+        return unwrapListResponse(data);
+    } catch (error) {
+        console.error('Ошибка при загрузке ручных долгов:', error);
+        return [];
     }
 }
 
@@ -165,7 +184,7 @@ async function getExpenses(roomId = null) {
     }
 }
 
-async function createExpense(roomId, description, amount, paidById, category, shares) {
+async function createExpense(roomId, description, amount, paidById, category, shares, sharedWithRoom = false, markAsPaid = false) {
     try {
         return await apiCall('POST', '/expenses/', {
             room: roomId,
@@ -173,7 +192,9 @@ async function createExpense(roomId, description, amount, paidById, category, sh
             amount,
             paid_by_id: paidById,
             category,
-            shares
+            shares,
+            shared_with_room: sharedWithRoom,
+            mark_as_paid: markAsPaid
         });
     } catch (error) {
         console.error('Ошибка при создании расхода:', error);
@@ -313,7 +334,127 @@ function initAnalytics() {
     console.log('COHUB v1.0 - Система управления совместной жизнью');
 }
 
+const THEME_STORAGE_KEY = 'cohub-theme';
+
+function getSavedTheme() {
+    try {
+        return localStorage.getItem(THEME_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function saveTheme(theme) {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+        // Если хранилище недоступно, продолжаем без сохранения
+    }
+}
+
+function resolveInitialTheme() {
+    const savedTheme = getSavedTheme();
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+        return savedTheme;
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+
+    const toggleBtn = document.getElementById('theme-toggle');
+    if (!toggleBtn) {
+        return;
+    }
+
+    const isDark = theme === 'dark';
+    const labelEl = toggleBtn.querySelector('.theme-toggle__label');
+    toggleBtn.setAttribute('aria-pressed', String(isDark));
+    toggleBtn.setAttribute('title', isDark ? 'Переключить на светлый режим' : 'Переключить на тёмный режим');
+    if (labelEl) {
+        labelEl.textContent = isDark ? 'Светлый режим' : 'Тёмный режим';
+    }
+}
+
+function initThemeToggle() {
+    const initialTheme = resolveInitialTheme();
+    applyTheme(initialTheme);
+
+    const toggleBtn = document.getElementById('theme-toggle');
+    if (!toggleBtn) {
+        return;
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(nextTheme);
+        saveTheme(nextTheme);
+    });
+}
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function () {
+    initThemeToggle();
     initAnalytics();
+    initOnboarding();
 });
+
+// Онбординг
+function initOnboarding() {
+    const modal = document.getElementById('onboarding-modal');
+    if (!modal) return;
+
+    const closeBtn = modal.querySelector('.close');
+    const steps = modal.querySelectorAll('.onboarding-step');
+    let currentStep = 0;
+
+    // Показать онбординг, если не показан ранее
+    if (!localStorage.getItem('onboardingShown')) {
+        modal.style.display = 'block';
+        showStep(currentStep);
+    }
+
+    // Закрыть модальное окно
+    closeBtn.onclick = function () {
+        modal.style.display = 'none';
+        localStorage.setItem('onboardingShown', 'true');
+    }
+
+    // Кнопки шагов
+    const nextButtons = modal.querySelectorAll('[id^="next-step-"]');
+    nextButtons.forEach(btn => {
+        btn.onclick = () => nextStep();
+    });
+
+    document.getElementById('finish-onboarding').onclick = () => {
+        modal.style.display = 'none';
+        localStorage.setItem('onboardingShown', 'true');
+    }
+
+    // Кнопка помощи
+    const helpBtn = document.getElementById('help-button');
+    if (helpBtn) {
+        helpBtn.onclick = () => {
+            modal.style.display = 'block';
+            currentStep = 0;
+            showStep(currentStep);
+        }
+    }
+
+    function showStep(step) {
+        steps.forEach((s, i) => {
+            s.classList.toggle('active', i === step);
+        });
+    }
+
+    function nextStep() {
+        if (currentStep < steps.length - 1) {
+            currentStep++;
+            showStep(currentStep);
+        }
+    }
+}

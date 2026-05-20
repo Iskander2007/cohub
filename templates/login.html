@@ -13,18 +13,21 @@
         <div class="register-inner">
             <h2 class="register-title">ВОЙТИ</h2>
             {% if error %}
-            <div class="error-message" style="display:block">{{ error }}</div>
+            <div class="error-message is-visible">{{ error }}</div>
             {% endif %}
 
             <form method="post" action="{% url 'login' %}" class="register-form">
                 {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next|default:'' }}">
                 <div class="input-group">
-                    <label>Адрес электронной почты</label>
-                    <input type="email" name="email" required value="{{ email|default:'' }}">
+                    <label for="login-email">Адрес электронной почты</label>
+                    <input id="login-email" type="email" name="email" required value="{{ email|default:'' }}"
+                        placeholder="email@пример.com" title="Введите email">
                 </div>
                 <div class="input-group">
-                    <label>Пароль</label>
-                    <input type="password" name="password" required>
+                    <label for="login-password">Пароль</label>
+                    <input id="login-password" type="password" name="password" required placeholder="Введите пароль"
+                        title="Введите пароль">
                 </div>
                 <button type="submit" class="btn register-btn">ВОЙТИ</button>
                 <p class="login-link">Нет аккаунта? <a href="{% url 'register' %}">Зарегистрируйтесь</a></p>

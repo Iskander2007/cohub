@@ -27,7 +27,7 @@ class TaskAdmin(admin.ModelAdmin):
 
 @admin.register(Expense)
 class ExpenseAdmin(admin.ModelAdmin):
-    list_display = ['description', 'category', 'amount', 'paid_by', 'room', 'date']
+    list_display = ['description', 'category', 'amount', 'is_shared', 'paid_by', 'room', 'date']
     list_filter = ['category', 'room', 'date']
     search_fields = ['description', 'room__name']
     readonly_fields = ['id', 'created_at', 'updated_at']

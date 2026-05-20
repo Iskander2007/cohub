@@ -26,14 +26,12 @@
                 {% csrf_token %}
 
                 <div class="input-group">
-                    <label>Код комнаты</label>
-                    <input type="text" name="room_code" placeholder="Например: ABC123" required
-                        style="text-transform: uppercase;">
+                    <label for="room-code">Код комнаты</label>
+                    <input id="room-code" class="uppercase-input" type="text" name="room_code"
+                        placeholder="Например: ABC123" required title="Введите код комнаты">
                 </div>
 
-                <p style="font-size: 12px; opacity: 0.7; margin-bottom: 15px;">
-                    Попросите код у хозяина комнаты
-                </p>
+                <p class="helper-text">Попросите код у хозяина комнаты</p>
 
                 <button type="submit" class="btn register-btn">ПРИСОЕДИНИТЬСЯ</button>
 

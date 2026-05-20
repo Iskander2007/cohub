@@ -10,9 +10,45 @@
 </head>
 
 <body>
+    {% if user.is_authenticated %}
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+        <span class="theme-toggle__dot" aria-hidden="true"></span>
+        <span class="theme-toggle__label">Тёмный режим</span>
+    </button>
+    {% endif %}
+
     <div class="wrapper">
         <div class="glass-container">
             {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Онбординг модальное окно -->
+    <div id="onboarding-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="onboarding-step-1" class="onboarding-step active">
+                <h2>Добро пожаловать в COHUB!</h2>
+                <p>COHUB помогает управлять совместной жизнью: распределять задачи, отслеживать расходы и поддерживать
+                    порядок в команде.</p>
+                <button id="next-step-1">Далее</button>
+            </div>
+            <div id="onboarding-step-2" class="onboarding-step">
+                <h2>Шаг 1: Регистрация</h2>
+                <p>Зарегистрируйтесь или войдите в аккаунт, чтобы начать использовать все возможности.</p>
+                <button id="next-step-2">Далее</button>
+            </div>
+            <div id="onboarding-step-3" class="onboarding-step">
+                <h2>Шаг 2: Создайте комнату</h2>
+                <p>Создайте комнату для вашей команды или присоединитесь к существующей по коду.</p>
+                <button id="next-step-3">Далее</button>
+            </div>
+            <div id="onboarding-step-4" class="onboarding-step">
+                <h2>Шаг 3: Добавьте задачи и расходы</h2>
+                <p>Распределяйте обязанности, отслеживайте расходы и общайтесь в чате. Наслаждайтесь совместной жизнью!
+                </p>
+                <button id="finish-onboarding">Начать пользоваться!</button>
+            </div>
         </div>
     </div>
 

@@ -9,9 +9,9 @@
 </aside>
 
 <main class="main profile-main">
-    <div class="card" style="width:100%;max-width:900px;">
-        <div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;">
-            <div style="flex:1;min-width:260px;text-align:center;">
+    <div class="card profile-card-shell">
+        <div class="profile-layout">
+            <div class="profile-sidebar-pane">
                 <h3>Личный кабинет</h3>
                 {% if profile.avatar %}
                 <img src="{{ profile.avatar.url }}" alt="Аватар" class="profile-avatar">
@@ -26,39 +26,41 @@
                 <form method="post" action="{% url 'profile' %}" enctype="multipart/form-data">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="upload_avatar">
-                    <div class="input-group" style="margin-top:15px;">
-                        <input type="file" name="avatar" accept="image/*">
+                    <div class="input-group input-group-spaced">
+                        <label for="profile-avatar-upload">Новый аватар</label>
+                        <input id="profile-avatar-upload" type="file" name="avatar" accept="image/*"
+                            title="Выберите изображение для аватара">
                     </div>
                     <button class="btn btn-small" type="submit">Загрузить</button>
                 </form>
 
-                <form method="post" action="{% url 'logout' %}" style="margin-top:20px;">
+                <form method="post" action="{% url 'logout' %}" class="logout-form-spaced">
                     {% csrf_token %}
                     <button class="btn btn-secondary" type="submit">Выйти</button>
                 </form>
+
+                <hr />
+                <h4>Связь с поддержкой</h4>
+                <div class="support-info">
+                    <p><span class="support-icon">📧</span> <strong>Email:</strong> <a
+                            href="mailto:oxoiska@gmail.com">oxoiska@gmail.com</a></p>
+                    <p><span class="support-icon">📞</span> <strong>Телефон:</strong> <a href="tel:+87075757978">+8
+                            (707) 575-79-78</a></p>
+                </div>
             </div>
 
-            <div style="flex:2;min-width:320px;">
+            <div class="profile-content-pane">
                 <h4>Ваши комнаты</h4>
                 {% if rooms %}
-                <ul style="list-style: none; padding: 0;">
-                    {% for r in rooms %}
-                    <li
-                        style="padding: 10px; background: rgba(42,168,163,0.1); margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>{{ r.name }}</strong><br>
-                            <small style="opacity: 0.7;">Код: <code
-                                    style="background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 3px;">{{ r.code }}</code></small>
-                        </div>
-                        <a href="{% url 'dashboard-room' r.id %}" class="btn"
-                            style="padding: 6px 12px; font-size: 12px;">Открыть</a>
-                    </li>
-                    {% endfor %}
-                </ul>
+                <div class="room-list">{% for r in rooms %}<div class="room-list-item">
+                        <div><strong>{{ r.name }}</strong><br><small class="room-code-meta">Код:
+                                <code>{{ r.code }}</code></small></div><a href="{% url 'dashboard-room' r.id %}"
+                            class="btn room-open-link">Открыть</a>
+                    </div>{% endfor %}</div>
                 {% else %}
-                <p style="opacity: 0.7;">У вас нет комнат</p>
+                <p class="muted-text">У вас нет комнат</p>
                 {% endif %}
-                <div style="margin-top: 15px;">
+                <div class="action-links-row">
                     <a href="{% url 'create-room' %}" class="btn-secondary">➕ Создать комнату</a>
                     <a href="{% url 'join-room' %}" class="btn-secondary">🔗 Присоединиться</a>
                 </div>
@@ -72,12 +74,14 @@
                     {% csrf_token %}
                     <input type="hidden" name="action" value="update_info">
                     <div class="input-group">
-                        <label>Полное имя</label>
-                        <input type="text" name="full_name" value="{{ user_obj.get_full_name }}">
+                        <label for="profile-full-name">Полное имя</label>
+                        <input id="profile-full-name" type="text" name="full_name" value="{{ user_obj.get_full_name }}"
+                            placeholder="Иван Иванов" title="Введите полное имя">
                     </div>
                     <div class="input-group">
-                        <label>Email</label>
-                        <input type="email" name="email" value="{{ user_obj.email }}">
+                        <label for="profile-email">Email</label>
+                        <input id="profile-email" type="email" name="email" value="{{ user_obj.email }}"
+                            placeholder="email@пример.com" title="Введите email">
                     </div>
                     <button class="btn btn-small" type="submit">Сохранить</button>
                 </form>
@@ -91,16 +95,19 @@
                     {% csrf_token %}
                     <input type="hidden" name="action" value="change_password">
                     <div class="input-group">
-                        <label>Текущий пароль</label>
-                        <input type="password" name="current_password" required>
+                        <label for="current-password">Текущий пароль</label>
+                        <input id="current-password" type="password" name="current_password" required
+                            placeholder="Введите текущий пароль" title="Введите текущий пароль">
                     </div>
                     <div class="input-group">
-                        <label>Новый пароль</label>
-                        <input type="password" name="new_password" required minlength="8">
+                        <label for="new-password">Новый пароль</label>
+                        <input id="new-password" type="password" name="new_password" required minlength="8"
+                            placeholder="Минимум 8 символов" title="Введите новый пароль">
                     </div>
                     <div class="input-group">
-                        <label>Подтвердите пароль</label>
-                        <input type="password" name="confirm_password" required minlength="8">
+                        <label for="confirm-password">Подтвердите пароль</label>
+                        <input id="confirm-password" type="password" name="confirm_password" required minlength="8"
+                            placeholder="Повторите новый пароль" title="Повторите новый пароль">
                     </div>
                     <button class="btn register-btn" type="submit">Сменить пароль</button>
                 </form>

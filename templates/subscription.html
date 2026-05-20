@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — Подписка{% endblock %}
+
+{% block content %}
+<style>
+    .subscription-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    
+    .subscription-hero {
+        text-align: center;
+        margin-bottom: 3rem;
+        padding: 3rem 2rem;
+        background: linear-gradient(135deg, #2aa8a3 0%, #1a7a73 100%);
+        border-radius: 16px;
+        color: white;
+    }
+    
+    .subscription-hero h1 {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .subscription-hero p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    .subscription-status {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+    
+    .status-trial {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+    
+    .status-active {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .status-expired, .status-cancelled {
+        background: #ffebee;
+        color: #c62828;
+    }
+    
+    .subscription-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    
+    .subscription-card {
+        background: white;
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .subscription-card:hover {
+        transform: translateY(-4px);
+    }
+    
+    .subscription-card.featured {
+        border: 2px solid #2aa8a3;
+    }
+    
+    .subscription-card.featured::before {
+        content: "Популярный";
+        position: absolute;
+        top: 20px;
+        right: -30px;
+        background: #2aa8a3;
+        color: white;
+        padding: 4px 40px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        transform: rotate(45deg);
+    }
+    
+    .card-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .price {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #2aa8a3;
+        margin: 1rem 0;
+    }
+    
+    .price span {
+        font-size: 1rem;
+        color: #666;
+    }
+    
+    .card-features {
+        list-style: none;
+        padding: 0;
+    }
+    
+    .card-features li {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f5f5f5;
+        display: flex;
+        align-items: center;
+    }
+    
+    .card-features li::before {
+        content: "✓";
+        color: #2aa8a3;
+        font-weight: bold;
+        margin-right: 0.75rem;
+    }
+    
+    .btn-subscribe {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-top: 1.5rem;
+    }
+    
+    .trial-info {
+        background: #f5f5f5;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        text-align: center;
+    }
+    
+    .trial-info h3 {
+        color: #2aa8a3;
+        margin-bottom: 0.5rem;
+    }
+    
+    .countdown {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #c62828;
+        margin: 1rem 0;
+    }
+    
+    .faq-section {
+        margin-top: 3rem;
+    }
+    
+    .faq-item {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .faq-question {
+        font-weight: 600;
+        color: #2aa8a3;
+        margin-bottom: 0.5rem;
+    }
+</style>
+
+<div class="subscription-page">
+    <div class="subscription-hero">
+        <h1>💎 Подписка COHUB</h1>
+        <p>Управляйте совместной жизнью на полную мощность с премиум-функциями</p>
+    </div>
+
+    <!-- Текущий статус подписки -->
+    <div class="subscription-status" id="subscription-status">
+        <h2>Ваша текущая подписка</h2>
+        <div id="status-content">
+            <p>Загрузка информации о подписке...</p>
+        </div>
+    </div>
+
+    <!-- Тарифные планы -->
+    <h2 style="text-align: center; margin-bottom: 2rem;">Выберите тариф</h2>
+    <div class="subscription-cards">
+        <!-- Бесплатный тариф -->
+        <div class="subscription-card">
+            <div class="card-header">
+                <h3>Бесплатно</h3>
+                <div class="price">0₸<span>/месяц</span></div>
+            </div>
+            <ul class="card-features">
+                <li>До 3 участников в комнате</li>
+                <li>Базовое управление задачами</li>
+                <li>Учет расходов</li>
+                <li>Чат комнаты</li>
+                <li>7 дней пробного периода PRO</li>
+            </ul>
+            <button class="btn btn-secondary btn-subscribe" disabled>Текущий тариф</button>
+        </div>
+
+        <!-- PRO тариф -->
+        <div class="subscription-card featured">
+            <div class="card-header">
+                <h3>🚀 PRO</h3>
+                <div class="price">5000₸<span>/месяц</span></div>
+            </div>
+            <ul class="card-features">
+                <li>Неограниченное количество участников</li>
+                <li>Расширенная аналитика</li>
+                <li>AI-помощник для оптимизации</li>
+                <li>Приоритетная поддержка</li>
+                <li>Экспорт данных</li>
+                <li>Настраиваемые уведомления</li>
+                <li>Интеграция с календарем</li>
+            </ul>
+            <button class="btn btn-subscribe" onclick="activateProSubscription()">
+                Оформить подписку
+            </button>
+        </div>
+    </div>
+
+    <!-- Информация о пробном периоде -->
+    <div class="trial-info" id="trial-info" style="display: none;">
+        <h3>🎉 У вас активен пробный период!</h3>
+        <p>Попробуйте все возможности PRO бесплатно в течение 7 дней</p>
+        <div class="countdown" id="trial-countdown">7 дней</div>
+        <p>После окончания пробного периода подписка автоматически не продлевается.</p>
+    </div>
+
+    <!-- FAQ -->
+    <div class="faq-section">
+        <h2 style="margin-bottom: 1.5rem;">Частые вопросы</h2>
+        
+        <div class="faq-item">
+            <div class="faq-question">Что входит в пробный период?</div>
+            <p>7 дней полного доступа ко всем PRO-функциям. После окончания пробного периода вы можете оформить платную подписку или продолжить использовать бесплатную версию.</p>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">Как оформить подписку?</div>
+            <p>Нажмите кнопку "Оформить подписку" и выберите удобный период оплаты. В данный момент доступна симуляция оплаты для тестирования функционала.</p>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">Можно ли отменить подписку?</div>
+            <p>Да, вы можете отменить подписку в любой момент в личном кабинете. Доступ к PRO-функциям сохранится до конца оплаченного периода.</p>
+        </div>
+        
+        <div class="faq-item">
+            <div class="faq-question">Что будет с моими данными?</div>
+            <p>Все ваши данные сохраняются независимо от статуса подписки. При переходе на бесплатный тариф вы потеряете доступ только к PRO-функциям.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Загрузка информации о подписке
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSubscriptionStatus();
+    });
+
+    function loadSubscriptionStatus() {
+        fetch('/api/subscription/')
+            .then(response => response.json())
+            .then(data => {
+                const statusContent = document.getElementById('status-content');
+                
+                if (data.is_active) {
+                    let statusClass = data.status === 'trial' ? 'status-trial' : 'status-active';
+                    let statusText = data.status === 'trial' ? 'Пробный период' : 'Активна';
+                    
+                    statusContent.innerHTML = `
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        <p><strong>Дней осталось:</strong> ${data.days_remaining}</p>
+                        ${data.paid_end ? `<p><strong>Действует до:</strong> ${new Date(data.paid_end).toLocaleDateString('ru-RU')}</p>` : ''}
+                        ${data.trial_end ? `<p><strong>Пробный период до:</strong> ${new Date(data.trial_end).toLocaleDateString('ru-RU')}</p>` : ''}
+                    `;
+                    
+                    if (data.status === 'trial') {
+                        document.getElementById('trial-info').style.display = 'block';
+                        document.getElementById('trial-countdown').textContent = `${data.days_remaining} дн.`;
+                    }
+                } else {
+                    statusContent.innerHTML = `
+                        <span class="status-badge status-expired">Не активна</span>
+                        <p>У вас нет активной подписки. Оформите подписку, чтобы получить доступ ко всем функциям.</p>
+                        <button class="btn" onclick="document.querySelector('.subscription-card.featured').scrollIntoView({behavior: 'smooth'})">
+                            Оформить подписку
+                        </button>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading subscription:', error);
+                document.getElementById('status-content').innerHTML = 
+                    '<p>Не удалось загрузить информацию о подписке. Попробуйте обновить страницу.</p>';
+            });
+    }
+
+    function activateProSubscription() {
+        if (confirm('Оформить подписку PRO за 5000₸ в месяц?')) {
+            fetch('/api/subscription/activate/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ months: 1 })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert('✅ ' + data.message);
+                    loadSubscriptionStatus();
+                } else if (data.error) {
+                    alert('❌ ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Произошла ошибка при оформлении подписки');
+            });
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}

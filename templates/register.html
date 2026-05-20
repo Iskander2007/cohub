@@ -14,48 +14,41 @@
             <h2 class="register-title">ПРИСОЕДИНИТЬСЯ К COHUB</h2>
 
             {% if errors %}
-            <div class="error-message" style="display:block;">
-                <ul>
-                    {% for e in errors %}
-                    <li>{{ e }}</li>
-                    {% endfor %}
-                </ul>
+            <div class="error-message is-visible">
+                <div class="error-list">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>
             </div>
             {% endif %}
 
             <form method="post" action="{% url 'register' %}" class="register-form" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="input-group">
-                    <label>Полное имя</label>
-                    <input type="text" name="full_name" placeholder="Иван Иванов" required
-                        value="{{ full_name|default:'' }}">
+                    <label for="register-full-name">Полное имя</label>
+                    <input id="register-full-name" type="text" name="full_name" placeholder="Иван Иванов" required
+                        value="{{ full_name|default:'' }}" title="Введите полное имя">
                 </div>
 
                 <div class="input-group">
-                    <label>Адрес электронной почты</label>
-                    <input type="email" name="email" placeholder="email@пример.com" required
-                        value="{{ email|default:'' }}">
+                    <label for="register-email">Адрес электронной почты</label>
+                    <input id="register-email" type="email" name="email" placeholder="email@пример.com" required
+                        value="{{ email|default:'' }}" title="Введите email">
                 </div>
 
                 <div class="input-group">
-                    <label>Пароль</label>
-                    <input type="password" name="password" placeholder="Минимум 8 символов" required minlength="8">
+                    <label for="register-password">Пароль</label>
+                    <input id="register-password" type="password" name="password" placeholder="Минимум 8 символов"
+                        required minlength="8" title="Введите надёжный пароль">
                 </div>
 
                 <div class="input-group">
-                    <label>Подтвердите пароль</label>
-                    <input type="password" name="password_confirm" placeholder="Повторите пароль" required
-                        minlength="8">
+                    <label for="register-password-confirm">Подтвердите пароль</label>
+                    <input id="register-password-confirm" type="password" name="password_confirm"
+                        placeholder="Повторите пароль" required minlength="8" title="Повторите пароль">
                 </div>
 
                 <div class="checkbox">
-                    <input type="checkbox" id="terms" name="terms" required>
-                    <label for="terms">Я согласен с Условиями и Политикой конфиденциальности</label>
-                </div>
-
-                <div class="input-group">
-                    <label>Аватар (необязательно)</label>
-                    <input type="file" name="avatar" accept="image/*">
+                    <input type="checkbox" id="terms" name="terms" required disabled>
+                    <label for="terms">Я ознакомился и соглашаюсь с <a href="#" class="privacy-link"
+                            id="open-privacy-modal">Политикой конфиденциальности РК</a></label>
                 </div>
 
                 <button type="submit" class="btn register-btn">ЗАРЕГИСТРИРОВАТЬСЯ</button>
@@ -65,5 +58,144 @@
         </div>
     </section>
 </main>
+
+<!-- Модальное окно: Политика конфиденциальности -->
+<div id="privacy-modal" class="privacy-modal-overlay" aria-modal="true" role="dialog"
+    aria-labelledby="privacy-modal-title" hidden>
+    <div class="privacy-modal-box">
+        <div class="privacy-modal-header">
+            <span class="privacy-modal-logo" aria-label="COHUB"></span>
+            <h2 id="privacy-modal-title">Политика конфиденциальности</h2>
+            <button class="privacy-modal-close" id="close-privacy-modal" aria-label="Закрыть">&times;</button>
+        </div>
+        <div class="privacy-modal-body" id="privacy-scroll-body">
+            <p class="privacy-subtitle">Республика Казахстан — Закон «О персональных данных и их защите»</p>
+
+            <h3>1. Общие положения</h3>
+            <p>Настоящая Политика конфиденциальности разработана в соответствии с Законом Республики Казахстан от 21 мая
+                2013 года № 94-V «О персональных данных и их защите» и регулирует порядок сбора, обработки, хранения и
+                защиты персональных данных пользователей сервиса COHUB.</p>
+
+            <h3>2. Оператор персональных данных</h3>
+            <p>Оператором персональных данных является сервис COHUB. Мы несём ответственность за законность обработки
+                ваших данных в соответствии с действующим законодательством РК.</p>
+
+            <h3>3. Категории собираемых данных</h3>
+            <p>В рамках регистрации и использования сервиса мы собираем следующие персональные данные:</p>
+            <ul>
+                <li>Полное имя пользователя;</li>
+                <li>Адрес электронной почты;</li>
+                <li>Аватар (фотография профиля — по желанию);</li>
+                <li>Данные об активности внутри сервиса (задачи, сообщения, финансовые записи комнат).</li>
+            </ul>
+
+            <h3>4. Цели обработки персональных данных</h3>
+            <p>Ваши данные обрабатываются исключительно в следующих целях:</p>
+            <ul>
+                <li>Идентификация и аутентификация пользователя;</li>
+                <li>Предоставление функциональности сервиса COHUB;</li>
+                <li>Обеспечение безопасности и предотвращение мошенничества;</li>
+                <li>Связь с пользователем в рамках поддержки.</li>
+            </ul>
+
+            <h3>5. Основания обработки</h3>
+            <p>Обработка персональных данных осуществляется на основании вашего добровольного согласия, выраженного при
+                регистрации на сервисе, в соответствии со ст. 8 Закона РК «О персональных данных и их защите».</p>
+
+            <h3>6. Передача данных третьим лицам</h3>
+            <p>Мы не передаём ваши персональные данные третьим лицам без вашего согласия, за исключением случаев,
+                предусмотренных законодательством Республики Казахстан.</p>
+
+            <h3>7. Хранение и защита данных</h3>
+            <p>Персональные данные хранятся на защищённых серверах. Мы применяем технические и организационные меры для
+                защиты данных от несанкционированного доступа, изменения, раскрытия или уничтожения в соответствии с
+                требованиями законодательства РК.</p>
+
+            <h3>8. Права субъекта персональных данных</h3>
+            <p>В соответствии с Законом РК вы вправе:</p>
+            <ul>
+                <li>Получать информацию об обработке ваших данных;</li>
+                <li>Требовать исправления неточных данных;</li>
+                <li>Отозвать согласие на обработку данных;</li>
+                <li>Требовать удаления данных при наличии законных оснований.</li>
+            </ul>
+
+            <h3>9. Срок хранения данных</h3>
+            <p>Данные хранятся в течение всего срока использования вами сервиса COHUB, а также в течение 3 лет после
+                удаления аккаунта, если иное не предусмотрено законодательством РК.</p>
+
+            <h3>10. Изменения политики</h3>
+            <p>COHUB оставляет за собой право вносить изменения в настоящую Политику. Актуальная версия всегда доступна
+                на сайте. При существенных изменениях вы будете уведомлены по электронной почте.</p>
+
+            <h3>11. Контактная информация</h3>
+            <p>По вопросам, связанным с обработкой персональных данных, обращайтесь к нам через форму обратной связи
+                внутри сервиса COHUB.</p>
+        </div>
+        <div class="privacy-modal-footer">
+            <label class="privacy-agree-label" id="privacy-agree-label-wrap">
+                <input type="checkbox" id="privacy-modal-check">
+                <span>Я прочитал(а) и соглашаюсь с Политикой конфиденциальности</span>
+            </label>
+            <button class="btn privacy-confirm-btn" id="privacy-confirm-btn" disabled>Принять и продолжить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const openBtn = document.getElementById('open-privacy-modal');
+        const modal = document.getElementById('privacy-modal');
+        const closeBtn = document.getElementById('close-privacy-modal');
+        const scrollBody = document.getElementById('privacy-scroll-body');
+        const modalCheck = document.getElementById('privacy-modal-check');
+        const confirmBtn = document.getElementById('privacy-confirm-btn');
+        const termsCheck = document.getElementById('terms');
+
+        function openModal(e) {
+            e.preventDefault();
+            modal.removeAttribute('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.setAttribute('hidden', '');
+            document.body.style.overflow = '';
+        }
+
+        openBtn.addEventListener('click', openModal);
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal();
+        });
+
+        // Разблокировать чекбокс в модалке только после прочтения (прокрутки до конца)
+        scrollBody.addEventListener('scroll', function () {
+            const scrolled = scrollBody.scrollTop + scrollBody.clientHeight >= scrollBody.scrollHeight - 10;
+            if (scrolled) {
+                modalCheck.disabled = false;
+                document.getElementById('privacy-agree-label-wrap').classList.add('readable');
+            }
+        });
+
+        // Кнопка "Принять" активна только при установленной галочке
+        modalCheck.addEventListener('change', function () {
+            confirmBtn.disabled = !this.checked;
+        });
+
+        confirmBtn.addEventListener('click', function () {
+            if (modalCheck.checked) {
+                termsCheck.disabled = false;
+                termsCheck.checked = true;
+                closeModal();
+            }
+        });
+
+        // Клавиша Escape закрывает модалку
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeModal();
+        });
+    })();
+</script>
 
 {% endblock %}

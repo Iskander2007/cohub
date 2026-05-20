@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}COHUB — Инсайты комнаты{% endblock %}
+
+{% block content %}
+<aside class="sidebar">
+    <div class="logo">COHUB</div>
+    {% if user.is_authenticated %}
+    {% if user.profile.avatar %}
+    <img src="{{ user.profile.avatar.url }}" alt="avatar" class="sidebar-avatar">
+    {% else %}
+    <div class="sidebar-avatar placeholder">?</div>
+    {% endif %}
+    <div class="sidebar-user-name">{{ user.get_full_name|default:user.username }}</div>
+    {% endif %}
+
+    <div class="room-title">{{ room.name }}</div>
+    <div class="members-label">УЧАСТНИКИ</div>
+    <div id="members-list">
+        {% for member in members %}
+        <div class="member">
+            {% if member.user.profile.avatar %}
+            <img src="{{ member.user.profile.avatar.url }}" alt="{{ member.user.get_full_name }}">
+            {% else %}
+            <div class="member-avatar-fallback">{{ member.user.first_name|first|upper }}</div>
+            {% endif %}
+            <span>{{ member.user.get_full_name|default:member.user.username }}</span>
+            {% if member.is_admin %}<span class="member-admin-badge">👑</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <nav class="nav">
+        <a href="{% url 'dashboard-room' room.id %}" class="nav-item">⬅️ Назад к комнате</a>
+        <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        <a href="{% url 'home' %}" class="nav-item">🏠 Главная</a>
+    </nav>
+</aside>
+
+<main class="main insights-main">
+    <section class="card insights-hero-card">
+        <div>
+            <div class="card-title">Обзор</div>
+            <h2 class="insights-title">Спокойный обзор комнаты</h2>
+            <p class="insights-subtitle">Всё важное о комнате — коротко и без лишнего.</p>
+        </div>
+        <div class="insights-hero-badge">Тихий режим</div>
+    </section>
+
+    <section class="insights-metrics-grid">
+        {% for metric in headline_metrics %}
+        <div class="card insight-metric-card">
+            <div class="card-title">{{ metric.label }}</div>
+            <div class="insight-metric-value">{{ metric.value }}</div>
+            <div class="sub">{{ metric.note }}</div>
+        </div>
+        {% endfor %}
+    </section>
+
+    <section class="insights-grid">
+        <div class="insights-column-stack">
+            <div class="card insights-panel">
+                <div class="card-title">Достижения</div>
+                <div class="achievement-list">
+                    {% for achievement in achievements %}
+                    <article class="achievement-item">
+                        <div class="achievement-icon">{{ achievement.icon }}</div>
+                        <div>
+                            <h3 class="achievement-title">{{ achievement.title }}</h3>
+                            <div class="achievement-winner">{{ achievement.winner }}</div>
+                            <p class="achievement-description">{{ achievement.description }}</p>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card insights-panel">
+                <div class="card-title">Напоминания</div>
+                <div class="reminder-list">
+                    {% for reminder in reminders %}
+                    <div class="reminder-item">🔔 {{ reminder }}</div>
+                    {% endfor %}
+                </div>
+                <p class="helper-text">В очереди: {{ pending_tasks }}.</p>
+            </div>
+        </div>
+
+        <div class="card insights-panel">
+            <div class="card-title">Настроение участников</div>
+            <div class="mood-summary mood-{{ mood_overview.key }}" id="mood-summary-box">
+                <div class="mood-label" id="mood-label">{{ mood_overview.label }}</div>
+                <p class="mood-message" id="mood-message">{{ mood_overview.message }}</p>
+            </div>
+
+            <div class="participant-mood-board">
+                {% for item in participant_moods %}
+                <article class="participant-mood-card mood-{{ item.mood_key }} {% if item.is_me %}is-me{% endif %}">
+                    <div class="participant-mood-head">
+                        <div class="participant-mood-person">
+                            <div class="participant-mood-emoji">{{ item.emoji }}</div>
+                            <div>
+                                <div class="participant-mood-name">
+                                    {{ item.name }}
+                                    {% if item.is_me %}<span class="participant-mood-badge">Это вы</span>{% endif %}
+                                </div>
+                                <div class="participant-mood-state">{{ item.label }}</div>
+                            </div>
+                        </div>
+                        <div class="participant-mood-meta">{{ item.updated_text }}</div>
+                    </div>
+                    <p class="participant-mood-text">{{ item.message }}</p>
+                    {% if item.note %}
+                    <div class="participant-mood-note">💬 {{ item.note }}</div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="mood-composer">
+                <div class="composer-title">Мой статус</div>
+                <div class="mood-selector" id="mood-selector">
+                    {% for mood in available_moods %}
+                    <button type="button"
+                        class="mood-option {% if current_user_mood.key == mood.key %}is-active{% endif %}"
+                        data-mood="{{ mood.key }}">{{ mood.emoji }} {{ mood.label }}</button>
+                    {% endfor %}
+                </div>
+                <textarea id="mood-note-input" class="mood-note-input" maxlength="120"
+                    placeholder="Например: нужен фокус до вечера / готов(а) помочь по дому">{{ current_user_mood.note }}</textarea>
+                <div class="mood-save-row">
+                    <button type="button" class="btn btn-small" id="save-mood-button">Сохранить</button>
+                    <span class="mood-save-status" id="mood-save-status"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card insights-panel insights-panel-wide">
+            <div class="card-title">Обзор</div>
+
+            <div class="chart-section">
+                <h3 class="chart-heading">Прогресс</h3>
+                {% for item in member_chart %}
+                <div class="chart-row">
+                    <div class="chart-row-head">
+                        <span>{{ item.name }}</span>
+                        <strong>{{ item.completed }} / {{ item.total }}</strong>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" data-width="{{ item.width }}"></div>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="muted-text">Пока нет данных по задачам.</p>
+                {% endfor %}
+            </div>
+
+            <div class="card insights-panel">
+                <div class="card-title">Метрики для учителя / отчёт</div>
+                <div id="teacher-metrics" class="teacher-metrics" data-room="{{ room.id }}">
+                    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+                        <canvas id="chart-tasks-trend" width="600" height="240" style="flex:1;min-width:300px"></canvas>
+                        <canvas id="chart-expenses-category" width="400" height="240"
+                            style="flex:1;min-width:300px"></canvas>
+                    </div>
+                    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                        <button id="download-metrics-csv" class="btn">Скачать CSV</button>
+                        <span class="muted-text">(данные за последние 30 дней)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <h3 class="chart-heading">Расходы</h3>
+                {% for item in expense_chart %}
+                <div class="chart-row">
+                    <div class="chart-row-head">
+                        <span>{{ item.label }}</span>
+                        <strong>{{ item.value }}₸</strong>
+                    </div>
+                    <div class="progress-track progress-track-soft">
+                        <div class="progress-fill progress-fill-accent" data-width="{{ item.width }}"></div>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="muted-text">Добавьте расходы, чтобы увидеть распределение по категориям.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'js/metrics.js' %}"></script>
+
+<script>
+    (function () {
+        const roomId = '{{ room.id }}';
+        const moodButtons = document.querySelectorAll('.mood-option[data-mood]');
+        const noteInput = document.getElementById('mood-note-input');
+        const saveButton = document.getElementById('save-mood-button');
+        const statusNode = document.getElementById('mood-save-status');
+        let selectedMood = '{{ current_user_mood.key|default:"calm" }}';
+
+        function getCookie(name) {
+            const cookieValue = document.cookie
+                .split('; ')
+                .find((row) => row.startsWith(`${name}=`));
+            return cookieValue ? decodeURIComponent(cookieValue.split('=').slice(1).join('=')) : '';
+        }
+
+        function highlightMood(moodKey) {
+            selectedMood = moodKey || 'calm';
+            moodButtons.forEach((button) => {
+                button.classList.toggle('is-active', button.dataset.mood === selectedMood);
+            });
+        }
+
+        async function saveMyMood() {
+            if (!saveButton) return;
+
+            saveButton.disabled = true;
+            statusNode.textContent = 'Сохраняем ваш статус...';
+
+            try {
+                const response = await fetch(`/api/rooms/${roomId}/update_my_mood/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        mood_key: selectedMood,
+                        mood_note: (noteInput?.value || '').trim(),
+                    }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Не удалось обновить настроение');
+                }
+
+                statusNode.textContent = data.message || 'Статус сохранён';
+                window.setTimeout(() => window.location.reload(), 350);
+            } catch (error) {
+                statusNode.textContent = error.message || 'Не удалось обновить настроение';
+            } finally {
+                saveButton.disabled = false;
+            }
+        }
+
+        moodButtons.forEach((button) => {
+            button.addEventListener('click', function () {
+                highlightMood(button.dataset.mood);
+            });
+        });
+
+        if (saveButton) {
+            saveButton.addEventListener('click', saveMyMood);
+        }
+
+        document.querySelectorAll('.progress-fill[data-width]').forEach((node) => {
+            node.style.width = `${node.dataset.width || 0}%`;
+        });
+
+        highlightMood(selectedMood);
+    })();
+</script>
+{% endblock %}

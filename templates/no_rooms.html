@@ -11,8 +11,7 @@
     {% else %}
     <div class="sidebar-avatar placeholder">?</div>
     {% endif %}
-    <div style="text-align:center;margin-bottom:20px;font-weight:600;">{{ user.get_full_name|default:user.username }}
-    </div>
+    <div class="sidebar-user-name">{{ user.get_full_name|default:user.username }}</div>
     {% endif %}
 
     <nav class="nav">
@@ -26,14 +25,14 @@
     </nav>
 </aside>
 
-<main class="main" style="justify-content: center; align-items: center;">
-    <div class="card" style="text-align: center; max-width: 500px; padding: 60px 40px;">
-        <h2 style="color: var(--primary-dark); margin-bottom: 20px;">📍 Комнат не найдено</h2>
-        <p style="font-size: 15px; opacity: 0.8; margin-bottom: 30px;">
+<main class="main main-centered">
+    <div class="card empty-state-card">
+        <h2 class="empty-state-title">📍 Комнат не найдено</h2>
+        <p class="empty-state-text">
             У вас пока нет комнат. Создайте новую или присоединитесь к существующей по коду.
         </p>
 
-        <div style="display: flex; gap: 10px; flex-direction: column;">
+        <div class="button-stack">
             <a href="{% url 'create-room' %}" class="btn">➕ Создать комнату</a>
             <a href="{% url 'join-room' %}" class="btn btn-secondary-link">🔗 Присоединиться</a>
         </div>
