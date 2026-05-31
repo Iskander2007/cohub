@@ -3731,7 +3731,7 @@ html[data-theme='dark'] #profile-avatar-upload:focus {
 .privacy-modal-logo {
     width: 112px;
     height: 42px;
-    background: url("../img/cohub-logo.svg") no-repeat left center;
+    background: url("../img/image_white.svg") no-repeat left center;
     background-size: contain;
     display: block;
     flex-shrink: 0;
