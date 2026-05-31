@@ -366,8 +366,8 @@ class RoomViewSet(viewsets.ModelViewSet):
         debts.sort(key=lambda item: item['amount'], reverse=True)
 
         loan_payment_queryset = LoanPayment.objects.filter(loan__room=room).select_related('loan__borrower', 'loan__lender', 'paid_by')
-        total_loan_payments = loan_payment_queryset.aggregate(total=Sum('amount'))['amount__sum'] or Decimal('0')
-        total_debt_settlements = room.debt_settlements.aggregate(total=Sum('amount'))['amount__sum'] or Decimal('0')
+        total_loan_payments = loan_payment_queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        total_debt_settlements = room.debt_settlements.aggregate(total=Sum('amount'))['total'] or Decimal('0')
         total_payment_count = loan_payment_queryset.count() + room.debt_settlements.count()
         total_paid_amount = total_loan_payments + total_debt_settlements
 
