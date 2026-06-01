@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile, DebtSettlement
+from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile, DebtSettlement, BackgroundTask
 
 
 @admin.register(Room)
@@ -51,3 +51,11 @@ class DebtSettlementAdmin(admin.ModelAdmin):
     list_display = ['room', 'from_user', 'to_user', 'amount', 'settled_by', 'settled_at']
     list_filter = ['room', 'settled_at']
     search_fields = ['room__name', 'from_user__username', 'to_user__username', 'settled_by__username']
+
+
+@admin.register(BackgroundTask)
+class BackgroundTaskAdmin(admin.ModelAdmin):
+    list_display = ['task_name', 'status', 'attempts', 'created_at', 'finished_at']
+    list_filter = ['status', 'task_name', 'created_at']
+    search_fields = ['task_name', 'result']
+    readonly_fields = ['id', 'created_at', 'started_at', 'finished_at']

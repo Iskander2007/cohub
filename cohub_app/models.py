@@ -71,6 +71,12 @@ class Task(models.Model):
         verbose_name = "Задача"
         verbose_name_plural = "Задачи"
         ordering = ['-created_at']
+        indexes = [
+            # Список задач комнаты с фильтром по статусу.
+            models.Index(fields=['room', 'status'], name='task_room_status_idx'),
+            # Задачи, назначенные конкретному пользователю.
+            models.Index(fields=['assigned_to', 'status'], name='task_assignee_status_idx'),
+        ]
     
     def __str__(self):
         return self.title
@@ -144,6 +150,10 @@ class Expense(models.Model):
         verbose_name = "Расход"
         verbose_name_plural = "Расходы"
         ordering = ['-date']
+        indexes = [
+            # Лента расходов комнаты, отсортированная по дате.
+            models.Index(fields=['room', '-date'], name='expense_room_date_idx'),
+        ]
     
     def __str__(self):
         return f"{self.description} ({self.amount}₸)"
@@ -278,6 +288,10 @@ class ChatMessage(models.Model):
         verbose_name = "Сообщение чата"
         verbose_name_plural = "Сообщения чата"
         ordering = ['-created_at']
+        indexes = [
+            # История сообщений комнаты по времени (пагинация чата).
+            models.Index(fields=['room', '-created_at'], name='chat_room_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.author.username}: {self.text[:30]}"
@@ -383,6 +397,40 @@ class Subscription(models.Model):
         """Истекает подписку"""
         self.status = 'expired'
         self.save()
+
+
+class BackgroundTask(models.Model):
+    """Задача в очереди. Хранится в БД; выполняется воркером (run_worker)."""
+
+    STATUS_CHOICES = [
+        ('pending', 'В очереди'),
+        ('running', 'Выполняется'),
+        ('done', 'Выполнена'),
+        ('failed', 'Ошибка'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task_name = models.CharField(max_length=100, verbose_name="Имя задачи")
+    payload = models.JSONField(default=dict, blank=True, verbose_name="Параметры")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Статус")
+    attempts = models.PositiveIntegerField(default=0, verbose_name="Сделано попыток")
+    max_attempts = models.PositiveIntegerField(default=3, verbose_name="Максимум попыток")
+    result = models.TextField(blank=True, verbose_name="Результат или текст ошибки")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создана")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="Начата")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершена")
+
+    class Meta:
+        verbose_name = "Фоновая задача"
+        verbose_name_plural = "Фоновые задачи (очередь)"
+        ordering = ['created_at']
+        indexes = [
+            # Воркер выбирает старейшие pending-задачи — индекс ускоряет это.
+            models.Index(fields=['status', 'created_at'], name='bgtask_status_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.task_name} [{self.status}]"
 
 
 # Signal to create profile and subscription automatically when a User is created

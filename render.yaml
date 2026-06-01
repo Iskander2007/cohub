@@ -1,6 +1,7 @@
 services:
   - type: web
     name: cohub-web
+    healthCheckPath: /health/
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
@@ -31,6 +32,21 @@ services:
         value: "True"
       - key: DJANGO_SECRET_KEY
         generateValue: true
+
+  # Воркер очереди: постоянно крутится и разбирает фоновые задачи из БД.
+  # ВАЖНО: должен использовать тот же DATABASE_URL, что и web-сервис.
+  - type: worker
+    name: cohub-worker
+    env: python
+    plan: free
+    autoDeploy: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py run_worker
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DJANGO_SECRET_KEY
+        sync: false
 
   - type: cron
     name: cohub-backup-daily

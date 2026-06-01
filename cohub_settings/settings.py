@@ -104,7 +104,24 @@ DATABASES = {
 DATABASES['default']['CONN_MAX_AGE'] = int(os.environ.get('DJANGO_DB_CONN_MAX_AGE', '60'))
 
 
-# Password validation
+# Cache
+REDIS_URL = os.environ.get('REDIS_URL')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'cohub-local-cache',
+        }
+    }
+
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {

@@ -121,7 +121,7 @@ class CohubApiTests(APITestCase):
         self.client.force_authenticate(user=self.member)
         payload = {
             'room': str(self.room.id),
-            'description': 'Интернет',
+            'description': 'АВПВЫВЫПИВЫМАВЫ',
             'amount': '3000.00',
             'category': 'Коммуналка',
             'shared_with_room': True,

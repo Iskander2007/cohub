@@ -16,6 +16,7 @@ from PIL import Image, UnidentifiedImageError
 import hashlib
 import string
 import random
+from django.db import connection  
 
 from .models import Room, RoomMember, Task, TaskReassignmentRequest, Expense, ExpenseShare, UserProfile, ChatMessage, DebtSettlement, Loan, LoanPayment, Subscription
 from .serializers import (
@@ -23,6 +24,7 @@ from .serializers import (
     ExpenseSerializer, ExpenseShareSerializer, UserSerializer, ChatMessageSerializer,
     LoanSerializer, LoanPaymentSerializer, SubscriptionSerializer,
 )
+from .tasks import enqueue
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -32,6 +34,64 @@ from django.utils import timezone
 from rest_framework.views import APIView
 from django.http import JsonResponse, HttpResponse
 import csv
+
+
+def healthcheck(request):
+    """Проверка живости приложения для мониторинга и Render.
+
+    Возвращает 200, если БД и кеш отвечают, иначе 503.
+    Не требует авторизации и не обращается к бизнес-данным.
+    """
+    checks = {}
+    healthy = True
+
+    # 1) База данных — пробуем установить соединение.
+    try:
+        connection.ensure_connection()
+        checks['database'] = 'ok'
+    except Exception:
+        checks['database'] = 'error'
+        healthy = False
+
+    # 2) Кеш — пишем и читаем контрольное значение.
+    try:
+        cache.set('healthcheck_ping', 'pong', timeout=5)
+        checks['cache'] = 'ok' if cache.get('healthcheck_ping') == 'pong' else 'error'
+        if checks['cache'] != 'ok':
+            healthy = False
+    except Exception:
+        checks['cache'] = 'error'
+        healthy = False
+
+    return JsonResponse(
+        {'status': 'ok' if healthy else 'error', 'checks': checks},
+        status=200 if healthy else 503,
+    )
+
+
+def get_room_cache_version(room_id):
+    """Текущая версия кеша комнаты.
+
+    Версия входит в ключ кеша. Когда данные комнаты меняются, версию
+    увеличивают (bump) — старые ключи становятся недостижимыми и кеш
+    автоматически «протухает», даже если параметры запроса разные.
+    """
+    key = f'room_cache_version_{room_id}'
+    version = cache.get(key)
+    if version is None:
+        version = 1
+        cache.set(key, version, timeout=None)  # без срока истечения
+    return version
+
+
+def bump_room_cache(room_id):
+    """Сбросить кеш комнаты, увеличив её версию (вызывать при записи данных)."""
+    key = f'room_cache_version_{room_id}'
+    try:
+        cache.incr(key)
+    except ValueError:
+        # Ключа ещё нет в кеше — создаём со 2, как будто инкрементировали 1.
+        cache.set(key, 2, timeout=None)
 
 
 def get_client_ip(request):
@@ -496,6 +556,16 @@ class RoomViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError):
             days = 30
         days = max(7, min(days, 90))
+
+        # Кеш: тяжёлый расчёт переиспользуется в течение 2 минут.
+        # Версия комнаты входит в ключ — при изменении расходов/задач она
+        # увеличивается (bump_room_cache) и кеш автоматически инвалидируется.
+        version = get_room_cache_version(room.id)
+        cache_key = f'assistant_{room.id}_v{version}_d{days}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         period_start = timezone.localdate() - timedelta(days=days - 1)
 
         members = list(room.members.select_related('user'))
@@ -601,7 +671,7 @@ class RoomViewSet(viewsets.ModelViewSet):
                 'advice': advice,
             })
 
-        return Response({
+        payload = {
             'advice_title': 'Совет',
             'expense_insights': expense_insights,
             'shopping_list': shopping_list,
@@ -614,7 +684,9 @@ class RoomViewSet(viewsets.ModelViewSet):
                 'pending_tasks': len(pending_tasks),
                 'unassigned_tasks': unassigned_count,
             },
-        })
+        }
+        cache.set(cache_key, payload, timeout=120)
+        return Response(payload)
 
     @action(detail=True, methods=['post'])
     def assistant_apply_shopping(self, request, pk=None):
@@ -1018,7 +1090,8 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Создает задачу с текущим пользователем"""
-        serializer.save(created_by=self.request.user)
+        task = serializer.save(created_by=self.request.user)
+        bump_room_cache(task.room_id)
     
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
@@ -1037,6 +1110,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.status = 'completed'
         task.completed_at = timezone.now()
         task.save(update_fields=['status', 'completed_at', 'updated_at'])
+        bump_room_cache(task.room_id)
         TaskReassignmentRequest.objects.filter(task=task, status='pending').update(
             status='cancelled',
             responded_at=timezone.now(),
@@ -1100,6 +1174,8 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                     is_settled=mark_as_paid,
                 )
 
+        bump_room_cache(room.id)
+
 
 class ExpenseShareViewSet(viewsets.ModelViewSet):
     """ViewSet для управления долями расходов"""
@@ -1121,6 +1197,7 @@ class ExpenseShareViewSet(viewsets.ModelViewSet):
         share = self.get_object()
         share.is_settled = True
         share.save()
+        bump_room_cache(share.expense.room_id)
         serializer = self.get_serializer(share)
         return Response(serializer.data)
 
@@ -1204,15 +1281,16 @@ class LoanViewSet(viewsets.ModelViewSet):
         if request.user not in {loan.lender, loan.room.owner}:
             return Response({'error': 'Напоминание может отправить только кредитор или владелец комнаты'}, status=status.HTTP_403_FORBIDDEN)
 
-        loan.last_reminder_sent_at = timezone.now()
-        loan.reminder_count += 1
-        loan.save(update_fields=['last_reminder_sent_at', 'reminder_count', 'updated_at'])
+        # Кладём отправку напоминания в очередь: ответ возвращается мгновенно,
+        # а саму работу (обновление полей, в будущем — email/push) выполнит
+        # фоновый воркер (manage.py run_worker).
+        enqueue('send_loan_reminder', loan_id=str(loan.id))
 
         borrower_name = loan.borrower.get_full_name() or loan.borrower.username
         return Response({
             'loan_id': str(loan.id),
-            'message': f'Напоминание для {borrower_name} отмечено. Напоминаний: {loan.reminder_count}.',
-            'reminder_count': loan.reminder_count,
+            'message': f'Напоминание для {borrower_name} поставлено в очередь.',
+            'queued': True,
         })
 
 

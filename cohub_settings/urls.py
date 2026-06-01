@@ -8,9 +8,11 @@ from django.conf.urls.static import static
 from django.views.generic import TemplateView
 from cohub_app.views import register_view, create_room_view, join_room_view, dashboard_view, room_insights_view
 from cohub_app.views import login_view, logout_view, profile_view, subscription_view
+from cohub_app.views import healthcheck
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('health/', healthcheck, name='health'),
     path('api/', include('cohub_app.urls')),
     path('', TemplateView.as_view(template_name='index.html'), name='home'),
     path('register/', register_view, name='register'),
