@@ -29,7 +29,17 @@
                     <input id="login-password" type="password" name="password" required placeholder="Введите пароль"
                         title="Введите пароль">
                 </div>
+                <div class="input-group">
+                    <label for="login-captcha">{{ captcha_question }}</label>
+                    <input id="login-captcha" type="text" name="captcha" inputmode="numeric" required
+                        autocomplete="off" placeholder="Ответ на вопрос" title="Защита от ботов">
+                </div>
                 <button type="submit" class="btn register-btn">ВОЙТИ</button>
+                {% if google_oauth_enabled %}
+                <a href="{% url 'google-login' %}" class="btn register-btn" style="display:block;text-align:center;margin-top:10px;background:#fff;color:#444;border:1px solid #ccc;text-decoration:none;">
+                    Войти через Google
+                </a>
+                {% endif %}
                 <p class="login-link">Нет аккаунта? <a href="{% url 'register' %}">Зарегистрируйтесь</a></p>
             </form>
         </div>

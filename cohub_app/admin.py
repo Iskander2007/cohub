@@ -42,7 +42,9 @@ class ExpenseShareAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'avatar']
+    list_display = ['user', 'role', 'avatar']
+    list_filter = ['role']
+    list_editable = ['role']
     search_fields = ['user__username', 'user__email']
 
 

@@ -634,9 +634,14 @@ class CohubApiTests(APITestCase):
         self.assertIn('Слишком много неудачных попыток входа', throttled_response.json()['error'])
 
     def test_login_view_redirects_to_dashboard_on_success(self):
+        # GET генерирует CAPTCHA и кладёт правильный ответ в сессию.
+        self.client.get('/account/login/')
+        captcha_answer = self.client.session['captcha_answer']
+
         response = self.client.post('/account/login/', {
             'email': 'owner@example.com',
             'password': 'password123',
+            'captcha': captcha_answer,
         })
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
@@ -932,3 +937,99 @@ class CohubApiTests(APITestCase):
             backup_content = backup_files[0].read_text(encoding='utf-8')
             self.assertIn('"model": "auth.user"', backup_content)
             self.assertIn('"model": "cohub_app.room"', backup_content)
+
+
+class SecurityFeaturesTests(APITestCase):
+    """Тесты добавленных фич безопасности: CAPTCHA, RBAC, open redirect, заголовки."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='user@example.com', password='password123')
+        self.admin = User.objects.create_user(
+            username='admin@example.com', password='password123', is_staff=True,
+        )
+        self.room = Room.objects.create(name='Sec Room', code='SEC123', owner=self.user)
+        RoomMember.objects.create(room=self.room, user=self.user, is_admin=True)
+
+    def tearDown(self):
+        cache.clear()
+
+    # --- CAPTCHA (A07) ---
+    def test_login_rejected_with_wrong_captcha(self):
+        self.client.get('/account/login/')  # генерируем CAPTCHA в сессии
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': '-999',  # заведомо неверный ответ
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)  # форма с ошибкой, не редирект
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_login_succeeds_with_correct_captcha(self):
+        self.client.get('/account/login/')
+        answer = self.client.session['captcha_answer']
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': answer,
+        })
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+
+    # --- A01: open redirect ---
+    def test_login_ignores_external_next_url(self):
+        self.client.get('/account/login/')
+        answer = self.client.session['captcha_answer']
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': answer,
+            'next': 'https://evil.example.com/phish',
+        })
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response['Location'], '/dashboard/')  # внешний адрес отброшен
+
+    # --- RBAC ---
+    def test_global_metrics_forbidden_for_regular_user(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_global_metrics_allowed_for_admin(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_role_field_grants_admin_access(self):
+        # Роль через профиль (без is_staff) тоже даёт доступ администратора.
+        self.user.profile.role = 'admin'
+        self.user.profile.save()
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_non_owner_member_cannot_delete_room(self):
+        other = User.objects.create_user(username='other@example.com', password='password123')
+        RoomMember.objects.create(room=self.room, user=other, is_admin=False)
+        self.client.force_authenticate(user=other)
+        response = self.client.delete(f'/api/rooms/{self.room.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Room.objects.filter(id=self.room.id).exists())
+
+    # --- Security headers (A05) ---
+    def test_security_headers_present(self):
+        response = self.client.get('/account/login/')
+        self.assertIn('Content-Security-Policy', response)
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        self.assertIn('camera=()', response['Permissions-Policy'])
+
+    # --- Аудит секретов ---
+    @override_settings(SECRET_KEY='proper-non-default-secret-key-for-tests-0123456789')
+    def test_check_secrets_passes_with_good_config(self):
+        # С нормальным SECRET_KEY и DEBUG=True команда завершается без проблем.
+        call_command('check_secrets')
+
+    def test_check_secrets_fails_on_default_secret_key(self):
+        # Небезопасный ключ по умолчанию должен приводить к ненулевому коду выхода.
+        with override_settings(SECRET_KEY='django-insecure-your-secret-key-change-in-production'):
+            with self.assertRaises(SystemExit):
+                call_command('check_secrets')

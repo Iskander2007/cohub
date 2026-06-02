@@ -66,6 +66,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Доп. заголовки безопасности: CSP, Permissions-Policy, nosniff.
+    'cohub_app.middleware.SecurityHeadersMiddleware',
 ]
 
 ROOT_URLCONF = 'cohub_settings.urls'
@@ -81,6 +83,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'cohub_app.context_processors.oauth_flags',
             ],
         },
     },
@@ -129,6 +132,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        # A07: явно требуем не короче 8 символов.
+        'OPTIONS': {'min_length': 8},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -171,6 +176,10 @@ X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
+# A07: ограничиваем срок жизни сессии и продлеваем его при активности
+# (скользящее окно). По умолчанию — 2 недели, можно переопределить через env.
+SESSION_COOKIE_AGE = int(os.environ.get('DJANGO_SESSION_COOKIE_AGE', str(60 * 60 * 24 * 14)))
+SESSION_SAVE_EVERY_REQUEST = True
 SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', default=False)
 SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE', default=SECURE_SSL_REDIRECT)
 CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE', default=SECURE_SSL_REDIRECT)
@@ -181,6 +190,11 @@ SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', default=False)
 LOGIN_URL = '/account/login/'
 LOGIN_REDIRECT_URL = '/account/'
 LOGOUT_REDIRECT_URL = '/'
+
+# Google OAuth 2.0. Ключи берём из окружения; если пусто — вход через Google
+# просто не предлагается (см. cohub_app/oauth.py).
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 
 # Limit oversized requests and uploads to reduce abuse and accidental resource exhaustion.
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE', str(2_621_440)))
@@ -199,12 +213,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # REST Framework settings
 REST_FRAMEWORK = {
+    # A07: только сессионная аутентификация. BasicAuthentication убрана —
+    # она передаёт логин/пароль в каждом запросе (риск перехвата и подбора).
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
     ],
+    # RBAC: по умолчанию любой эндпоинт требует аутентификации (роль user).
+    # Эндпоинты только для админов отдельно используют permissions.IsAdminRole.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'cohub_app.permissions.IsAuthenticatedUser',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,

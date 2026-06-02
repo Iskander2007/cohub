@@ -4,6 +4,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from .permissions import IsAuthenticatedUser, IsAdminRole, is_admin
+from .captcha import get_captcha_question, validate_captcha
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.core.cache import cache
@@ -277,7 +280,7 @@ class RoomViewSet(viewsets.ModelViewSet):
     """ViewSet для управления комнатами"""
     queryset = Room.objects.all()
     serializer_class = RoomSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
     
     def get_queryset(self):
         """Возвращает комнаты, в которых участвует пользователь"""
@@ -292,7 +295,29 @@ class RoomViewSet(viewsets.ModelViewSet):
         room = serializer.save(owner=self.request.user, code=code)
         # Добавляем владельца как участника
         RoomMember.objects.create(room=room, user=self.request.user, is_admin=True)
-    
+
+    def _ensure_room_manager(self, room):
+        """A01/RBAC: изменять и удалять комнату может только владелец или глобальный admin.
+
+        Обычный участник (роль user) комнату менять/удалять не может, даже если
+        состоит в ней — get_queryset отдаёт её только для чтения.
+        """
+        if not (room.owner_id == self.request.user.id or is_admin(self.request.user)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Изменять комнату может только её владелец или администратор.')
+
+    def update(self, request, *args, **kwargs):
+        self._ensure_room_manager(self.get_object())
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._ensure_room_manager(self.get_object())
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self._ensure_room_manager(self.get_object())
+        return super().destroy(request, *args, **kwargs)
+
     @staticmethod
     def generate_room_code():
         """Генерирует уникальный код комнаты"""
@@ -841,7 +866,7 @@ class TaskReassignmentRequestViewSet(viewsets.ModelViewSet):
 
     queryset = TaskReassignmentRequest.objects.all()
     serializer_class = TaskReassignmentRequestSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
@@ -972,7 +997,7 @@ class TeacherMetricsView(APIView):
     Если `room` отсутствует, доступ разрешён только staff/superuser.
     Поддерживает `?format=csv` для скачивания CSV.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     def get(self, request):
         room_id = request.query_params.get('room')
@@ -986,17 +1011,17 @@ class TeacherMetricsView(APIView):
                 return Response({'error': 'Комната не найдена'}, status=status.HTTP_404_NOT_FOUND)
 
             is_member = room.owner_id == request.user.id or room.members.filter(user=request.user).exists()
-            if not is_member and not request.user.is_staff:
+            if not is_member and not is_admin(request.user):
                 return Response({'error': 'Нет доступа к метрикам этой комнаты'}, status=status.HTTP_403_FORBIDDEN)
         else:
-            if not (request.user.is_staff or request.user.is_superuser):
+            if not is_admin(request.user):
                 return Response({'error': 'Только преподаватель/админ может запрашивать глобальные метрики'}, status=status.HTTP_403_FORBIDDEN)
 
         days = 30
         period_start = timezone.localdate() - timedelta(days=days - 1)
 
         # Базовые агрегаты
-        rooms_qs = Room.objects.all() if (request.user.is_staff or request.user.is_superuser) and not room_id else Room.objects.filter(id=room_id)
+        rooms_qs = Room.objects.all() if is_admin(request.user) and not room_id else Room.objects.filter(id=room_id)
         total_rooms = rooms_qs.count()
         total_users = User.objects.count()
         active_users_30d = User.objects.filter(last_login__date__gte=period_start).count()
@@ -1068,7 +1093,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet для управления задачами"""
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
     
     def get_queryset(self):
         """Возвращает задачи из комнат пользователя"""
@@ -1124,7 +1149,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     """ViewSet для управления расходами"""
     queryset = Expense.objects.all()
     serializer_class = ExpenseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     @staticmethod
     def _as_bool(value):
@@ -1181,7 +1206,7 @@ class ExpenseShareViewSet(viewsets.ModelViewSet):
     """ViewSet для управления долями расходов"""
     queryset = ExpenseShare.objects.all()
     serializer_class = ExpenseShareSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     def get_queryset(self):
         """Возвращает доли только по комнатам пользователя"""
@@ -1253,7 +1278,7 @@ class LoanViewSet(viewsets.ModelViewSet):
 
     queryset = Loan.objects.all()
     serializer_class = LoanSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     def get_queryset(self):
         user = self.request.user
@@ -1299,7 +1324,7 @@ class LoanPaymentViewSet(viewsets.ModelViewSet):
 
     queryset = LoanPayment.objects.all()
     serializer_class = LoanPaymentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
@@ -1323,7 +1348,7 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
     """ViewSet для сообщений чата"""
     queryset = ChatMessage.objects.all()
     serializer_class = ChatMessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
 
     def get_queryset(self):
         user = self.request.user
@@ -1344,7 +1369,7 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
 
 class SubscriptionViewSet(viewsets.ViewSet):
     """ViewSet для управления подписками пользователей"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedUser]
     serializer_class = SubscriptionSerializer
 
     def list(self, request):
@@ -1431,8 +1456,12 @@ def register_view(request):
         password = request.POST.get('password', '')
         password_confirm = request.POST.get('password_confirm', '')
         terms = request.POST.get('terms')
+        captcha_answer = request.POST.get('captcha', '')
 
         errors = []
+        # CAPTCHA проверяется первой: отсекаем ботов до любой работы с БД.
+        if not validate_captcha(request, captcha_answer):
+            errors.append('Неверный ответ на проверочный вопрос (CAPTCHA)')
         if not full_name:
             errors.append('Пожалуйста, укажите полное имя')
         if not email:
@@ -1459,6 +1488,7 @@ def register_view(request):
                 'errors': errors,
                 'full_name': full_name,
                 'email': email,
+                'captcha_question': get_captcha_question(request),
             })
 
         # Создаем пользователя
@@ -1483,6 +1513,7 @@ def register_view(request):
                     'errors': list(exc.messages),
                     'full_name': full_name,
                     'email': email,
+                    'captcha_question': get_captcha_question(request),
                 })
 
         # Аутентифицируем и логиним сразу
@@ -1497,7 +1528,9 @@ def register_view(request):
         return redirect('home')
 
     # GET
-    return render(request, 'register.html')
+    return render(request, 'register.html', {
+        'captcha_question': get_captcha_question(request),
+    })
 
 
 def login_view(request):
@@ -1507,6 +1540,7 @@ def login_view(request):
     if request.method == 'POST':
         email = request.POST.get('email', '').strip().lower()
         password = request.POST.get('password', '')
+        captcha_answer = request.POST.get('captcha', '')
 
         if is_login_rate_limited(request, email):
             return render(
@@ -1516,16 +1550,33 @@ def login_view(request):
                     'error': 'Слишком много неудачных попыток входа. Попробуйте снова позже.',
                     'email': email,
                     'next': next_url,
+                    'captcha_question': get_captcha_question(request),
                 },
                 status=429,
             )
+
+        # A07: CAPTCHA при входе мешает автоматическому подбору паролей.
+        if not validate_captcha(request, captcha_answer):
+            register_failed_login_attempt(request, email)
+            return render(request, 'login.html', {
+                'error': 'Неверный ответ на проверочный вопрос (CAPTCHA)',
+                'email': email,
+                'next': next_url,
+                'captcha_question': get_captcha_question(request),
+            })
 
         user = authenticate(request, username=email, password=password)
         if user is not None:
             clear_failed_login_attempts(request, email)
             login(request, user)
             messages.success(request, 'Вы успешно вошли в систему')
-            if next_url.startswith('/'):
+            # A01: защита от open redirect — пускаем только на безопасные
+            # внутренние адреса того же хоста, иначе на дашборд.
+            if next_url and url_has_allowed_host_and_scheme(
+                next_url,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
                 return redirect(next_url)
             return redirect('dashboard')
         else:
@@ -1534,9 +1585,13 @@ def login_view(request):
                 'error': 'Неверный email или пароль',
                 'email': email,
                 'next': next_url,
+                'captcha_question': get_captcha_question(request),
             })
 
-    return render(request, 'login.html', {'next': next_url})
+    return render(request, 'login.html', {
+        'next': next_url,
+        'captcha_question': get_captcha_question(request),
+    })
 
 
 from django.contrib.auth import logout

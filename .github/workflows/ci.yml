@@ -53,5 +53,33 @@ jobs:
       - name: Run tests
         run: python manage.py test --verbosity=2
 
+      - name: Security deploy checks (Django)
+        run: python manage.py check --deploy
+        env:
+          DJANGO_DEBUG: "false"
+          DJANGO_SECURE_SSL_REDIRECT: "true"
+          DJANGO_SESSION_COOKIE_SECURE: "true"
+          DJANGO_CSRF_COOKIE_SECURE: "true"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+
+      - name: Audit secrets and config
+        run: python manage.py check_secrets
+
       - name: Collect static files
         run: python manage.py collectstatic --noinput
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # полная история нужна trufflehog для сканирования коммитов
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: HEAD
+          extra_args: --results=verified,unknown

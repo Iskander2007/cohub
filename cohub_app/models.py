@@ -299,13 +299,29 @@ class ChatMessage(models.Model):
 
 class UserProfile(models.Model):
     """Дополнительная информация о пользователе (аватар, био и личный статус)"""
+
+    # RBAC: роль пользователя на уровне всего сервиса.
+    ROLE_USER = 'user'
+    ROLE_ADMIN = 'admin'
+    ROLE_CHOICES = [
+        (ROLE_USER, 'Пользователь'),
+        (ROLE_ADMIN, 'Администратор'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     bio = models.TextField(blank=True, null=True, verbose_name="Биография")
+    role = models.CharField(
+        max_length=10,
+        choices=ROLE_CHOICES,
+        default=ROLE_USER,
+        verbose_name="Роль (RBAC)",
+        help_text="Глобальная роль пользователя: user или admin.",
+    )
     mood_key = models.CharField(max_length=20, default='calm', blank=True, verbose_name="Текущее настроение")
     mood_note = models.CharField(max_length=120, blank=True, verbose_name="Короткая заметка к настроению")
     mood_updated_at = models.DateTimeField(blank=True, null=True, verbose_name="Когда обновили настроение")
-    
+
     def __str__(self):
         return f"Профиль {self.user.username}"
 
