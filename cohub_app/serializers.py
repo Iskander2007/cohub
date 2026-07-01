@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.utils import timezone
-from .models import Room, RoomMember, Task, TaskReassignmentRequest, Expense, ExpenseShare, ChatMessage, Loan, LoanPayment, Subscription
+from .models import Room, RoomMember, Task, TaskReassignmentRequest, Expense, ExpenseShare, ChatMessage, Loan, LoanPayment, Subscription, Order, PaymentEvent
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -44,9 +44,12 @@ class TaskSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Task
-        fields = ['id', 'room', 'title', 'description', 'assigned_to', 'assigned_to_id', 'status', 
+        fields = ['id', 'room', 'title', 'description', 'assigned_to', 'assigned_to_id', 'status',
                   'priority', 'due_date', 'created_by', 'created_at', 'updated_at', 'completed_at', 'can_complete', 'completion_hint']
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at', 'completed_at', 'can_complete', 'completion_hint']
+        # `status` — read-only: завершение задачи идёт только через action `complete`
+        # (с проверкой can_be_completed_by). Иначе любой участник комнаты мог бы
+        # выставить status='completed' прямым PATCH, минуя проверку прав.
+        read_only_fields = ['id', 'created_by', 'status', 'created_at', 'updated_at', 'completed_at', 'can_complete', 'completion_hint']
 
     def get_can_complete(self, obj):
         request = self.context.get('request')
@@ -385,3 +388,31 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             'id', 'user', 'created_at', 'updated_at',
             'status_display', 'is_active', 'days_remaining', 'trial_days_remaining'
         ]
+
+
+class PaymentEventSerializer(serializers.ModelSerializer):
+    """Событие из аудита платежа (PAY-004)."""
+
+    class Meta:
+        model = PaymentEvent
+        fields = ['id', 'event_type', 'from_status', 'to_status', 'message', 'created_at']
+        read_only_fields = fields
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    """Заказ на разовую оплату с историей переходов статуса."""
+
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    provider_display = serializers.CharField(source='get_provider_display', read_only=True)
+    events = PaymentEventSerializer(many=True, read_only=True)
+    is_paid = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'number', 'purpose', 'description', 'subscription_months',
+            'amount', 'currency', 'provider', 'provider_display',
+            'status', 'status_display', 'is_paid',
+            'provider_order_id', 'created_at', 'updated_at', 'paid_at', 'events',
+        ]
+        read_only_fields = fields

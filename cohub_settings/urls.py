@@ -7,9 +7,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
 from cohub_app.views import register_view, create_room_view, join_room_view, dashboard_view, room_insights_view
-from cohub_app.views import login_view, logout_view, profile_view, subscription_view
+from cohub_app.views import login_view, logout_view, profile_view, subscription_view, kpi_dashboard_view
 from cohub_app.views import healthcheck
 from cohub_app.oauth import google_login_view, google_callback_view
+from cohub_app.payment_views import (
+    payment_gateway_view, payment_sandbox_confirm_view, payment_return_view, payment_callback_view,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -28,6 +31,15 @@ urlpatterns = [
     path('dashboard/<uuid:room_id>/', dashboard_view, name='dashboard-room'),
     path('dashboard/<uuid:room_id>/insights/', room_insights_view, name='room-insights'),
     path('subscription/', subscription_view, name='subscription'),
+    # KPI-дашборд (Week 5): conversion rate, MRR, churn. Доступ — только админ.
+    path('analytics/kpi/', kpi_dashboard_view, name='kpi-dashboard'),
+    # --- Платежи (PAY-002…PAY-006) ---
+    # Колбэк провайдера (server-to-server вебхук, тестируется через ngrok).
+    path('payments/callback/<str:provider>/', payment_callback_view, name='payment-callback'),
+    # Sandbox-эмуляция платёжной формы и страница результата.
+    path('payments/pay/<uuid:order_id>/', payment_gateway_view, name='payment-gateway'),
+    path('payments/pay/<uuid:order_id>/confirm/', payment_sandbox_confirm_view, name='payment-sandbox-confirm'),
+    path('payments/return/<uuid:order_id>/', payment_return_view, name='payment-return'),
 ]
 
 if settings.DEBUG:

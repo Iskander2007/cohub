@@ -1,0 +1,6 @@
+# Dev / тестовые зависимости (НЕ ставятся в продакшене).
+# Установка:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Нагрузочное тестирование (locust_loadtest.py, 100 пользователей, HTML-отчёт).
+locust==2.44.4

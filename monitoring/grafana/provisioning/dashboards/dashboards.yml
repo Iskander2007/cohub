@@ -1,0 +1,15 @@
+# Провайдер дашбордов: Grafana подхватывает все JSON-дашборды из указанной папки
+# при старте. Достаточно положить файл в monitoring/grafana/dashboards/.
+apiVersion: 1
+
+providers:
+  - name: COHUB
+    orgId: 1
+    folder: COHUB
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

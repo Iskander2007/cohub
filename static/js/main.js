@@ -364,6 +364,8 @@ function resolveInitialTheme() {
 
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
+    // Синхронизируем тёмную тему Tabler/Bootstrap (компоненты читают data-bs-theme).
+    document.documentElement.setAttribute('data-bs-theme', theme);
 
     const toggleBtn = document.getElementById('theme-toggle');
     if (!toggleBtn) {

@@ -233,11 +233,43 @@
                 <li>Настраиваемые уведомления</li>
                 <li>Интеграция с календарем</li>
             </ul>
-            <button class="btn btn-subscribe" onclick="activateProSubscription()">
-                Оформить подписку
+            <div class="pay-methods">
+                <div style="font-size: .95rem; color: #555; margin-bottom: .75rem;">
+                    Выберите платежный метод. Оплата будет проходить через безопасный шлюз поставщика.
+                </div>
+                <label class="pay-method">
+                    <input type="radio" name="pay-provider" value="bereke" checked>
+                    <span>🏦 Bereke Bank <small id="price-bereke">5000₸</small></span>
+                </label>
+                <label class="pay-method">
+                    <input type="radio" name="pay-provider" value="paypal">
+                    <span>🅿️ PayPal <small id="price-paypal">$9.99</small></span>
+                </label>
+            </div>
+            <label style="display:block;margin-top:1rem;font-size:.9rem;color:#666;">
+                Период оплаты:
+                <select id="pay-months" style="width:100%;padding:.5rem;margin-top:.4rem;border-radius:8px;border:1px solid #ddd;">
+                    <option value="1">1 месяц</option>
+                    <option value="3">3 месяца</option>
+                    <option value="6">6 месяцев</option>
+                    <option value="12">12 месяцев</option>
+                </select>
+            </label>
+            <div style="margin-top:1rem; font-size:.95rem; color:#444; line-height:1.5;">
+                В сервисе COHUB оплата производится картой через выбранного поставщика. В тестовом режиме это эмуляция, но в рабочем режиме вы будете перенаправлены на оплату Bereke или PayPal.
+            </div>
+            <button class="btn btn-subscribe" id="checkout-btn" onclick="startCheckout()">
+                Перейти к оплате картой
             </button>
         </div>
     </div>
+
+    <style>
+        .pay-methods { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }
+        .pay-method { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem;
+            border: 1px solid #e0e0e0; border-radius: 10px; cursor: pointer; }
+        .pay-method small { color: #2aa8a3; font-weight: 600; margin-left: .3rem; }
+    </style>
 
     <!-- Информация о пробном периоде -->
     <div class="trial-info" id="trial-info" style="display: none;">
@@ -317,30 +349,69 @@
             });
     }
 
-    function activateProSubscription() {
-        if (confirm('Оформить подписку PRO за 5000₸ в месяц?')) {
-            fetch('/api/subscription/activate/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({ months: 1 })
+    // Подгружаем цены провайдеров (Bereke ₸ / PayPal $) из API.
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/api/orders/config/')
+            .then(r => r.json())
+            .then(cfg => {
+                (cfg.providers || []).forEach(p => {
+                    const el = document.getElementById('price-' + p.id);
+                    if (!el) return;
+                    const symbol = p.currency === 'USD' ? '$' : '₸';
+                    el.textContent = p.currency === 'USD'
+                        ? symbol + p.price_per_month
+                        : p.price_per_month + symbol;
+                });
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.message) {
-                    alert('✅ ' + data.message);
-                    loadSubscriptionStatus();
-                } else if (data.error) {
-                    alert('❌ ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Произошла ошибка при оформлении подписки');
-            });
-        }
+            .catch(() => {});
+    });
+
+    // PAY-005: защита от двойного клика — блокируем кнопку на время запроса.
+    let checkoutInFlight = false;
+
+    function startCheckout() {
+        if (checkoutInFlight) return;
+        const provider = document.querySelector('input[name="pay-provider"]:checked').value;
+        const months = parseInt(document.getElementById('pay-months').value, 10) || 1;
+        const btn = document.getElementById('checkout-btn');
+
+        checkoutInFlight = true;
+        btn.disabled = true;
+        btn.textContent = 'Создаём заказ…';
+
+        fetch('/api/orders/checkout/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+                // Idempotency-Key страхует от дублей при повторной отправке (PAY-005).
+                'Idempotency-Key': `${provider}-${months}-${Date.now()}`
+            },
+            body: JSON.stringify({ provider: provider, months: months })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.redirect_url) {
+                // Переходим на платёжную форму провайдера (в sandbox — эмуляция COHUB).
+                window.location.href = data.redirect_url;
+            } else {
+                alert('❌ ' + (data.error || 'Не удалось создать заказ'));
+                resetCheckoutBtn();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Произошла ошибка при оформлении подписки');
+            resetCheckoutBtn();
+        });
+    }
+
+    function resetCheckoutBtn() {
+        checkoutInFlight = false;
+        const btn = document.getElementById('checkout-btn');
+        btn.disabled = false;
+        // Возвращаем исходную подпись кнопки (раньше тут терялось слово «картой»).
+        btn.textContent = 'Перейти к оплате картой';
     }
 
     function getCookie(name) {

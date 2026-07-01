@@ -26,8 +26,18 @@ wheels/
 # Django
 *.log
 db.sqlite3
+# Эфемерные файлы SQLite (WAL/SHM) — не версионируем.
+db.sqlite3-shm
+db.sqlite3-wal
 /media
 /staticfiles
+
+# Runtime-логи приложения (JSON-логи платежей/ошибок/запросов).
+logs/
+
+# Артефакты нагрузочного тестирования (генерируются locust'ом).
+loadtest_report.html
+loadtest_stats_*.csv
 
 # IDE
 .vscode/

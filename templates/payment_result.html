@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — Результат оплаты {{ order.number }}{% endblock %}
+
+{% block content %}
+<style>
+    .result-box { max-width: 520px; margin: 3rem auto; background: #fff; border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12); padding: 2.5rem; text-align: center; }
+    .result-icon { font-size: 3.5rem; }
+    .result-title { font-size: 1.5rem; margin: 1rem 0 .5rem; }
+    .result-sub { color: #777; margin-bottom: 1.5rem; }
+    .result-paid .result-title { color: #2e7d32; }
+    .result-failed .result-title { color: #c62828; }
+    .result-pending .result-title { color: #f57c00; }
+    .result-meta { text-align: left; background: #fafafa; border-radius: 10px; padding: 1.2rem;
+        margin: 1.5rem 0; }
+    .result-meta div { display: flex; justify-content: space-between; padding: .4rem 0; }
+    .result-meta span:first-child { color: #888; }
+    .result-actions a { display: inline-block; margin: .5rem; padding: .8rem 1.6rem;
+        border-radius: 10px; text-decoration: none; font-weight: 600; }
+    .btn-primary { background: #2aa8a3; color: #fff; }
+    .btn-ghost { background: #f0f0f0; color: #333; }
+    .timeline { text-align: left; margin-top: 1.5rem; font-size: .85rem; color: #666; }
+    .timeline li { margin: .3rem 0; }
+</style>
+
+<div class="result-box
+    {% if order.status == 'paid' %}result-paid{% elif order.status == 'failed' %}result-failed{% else %}result-pending{% endif %}">
+
+    {% if order.status == 'paid' %}
+        <div class="result-icon">✅</div>
+        <div class="result-title">Оплата прошла успешно</div>
+        <div class="result-sub">PRO-подписка активирована на {{ order.subscription_months }} мес.</div>
+    {% elif order.status == 'failed' %}
+        <div class="result-icon">❌</div>
+        <div class="result-title">Оплата отклонена</div>
+        <div class="result-sub">Платёж не прошёл. Можно попробовать ещё раз.</div>
+    {% elif order.status == 'cancelled' %}
+        <div class="result-icon">↩️</div>
+        <div class="result-title">Оплата отменена</div>
+        <div class="result-sub">Вы отменили платёж.</div>
+    {% else %}
+        <div class="result-icon">⏳</div>
+        <div class="result-title">Ожидаем подтверждение</div>
+        <div class="result-sub">Статус заказа: {{ order.get_status_display }}</div>
+    {% endif %}
+
+    <div class="result-meta">
+        <div><span>Заказ</span><span>{{ order.number }}</span></div>
+        <div><span>Провайдер</span><span>{{ order.get_provider_display }}</span></div>
+        <div><span>Сумма</span><span>{{ order.amount }} {{ order.currency }}</span></div>
+        <div><span>Статус</span><span>{{ order.get_status_display }}</span></div>
+    </div>
+
+    <div class="result-actions">
+        <a class="btn-primary" href="{% url 'subscription' %}">К подписке</a>
+        <a class="btn-ghost" href="{% url 'dashboard' %}">На дашборд</a>
+    </div>
+
+    <ul class="timeline">
+        {% for event in order.events.all %}
+            <li>• {{ event.created_at|date:"d.m H:i:s" }} — {{ event.message|default:event.event_type }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

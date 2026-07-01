@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile, DebtSettlement, BackgroundTask
+from .models import Room, RoomMember, Task, Expense, ExpenseShare, UserProfile, DebtSettlement, BackgroundTask, Order, PaymentEvent
 
 
 @admin.register(Room)
@@ -61,3 +61,29 @@ class BackgroundTaskAdmin(admin.ModelAdmin):
     list_filter = ['status', 'task_name', 'created_at']
     search_fields = ['task_name', 'result']
     readonly_fields = ['id', 'created_at', 'started_at', 'finished_at']
+
+
+class PaymentEventInline(admin.TabularInline):
+    model = PaymentEvent
+    extra = 0
+    can_delete = False
+    readonly_fields = ['event_type', 'from_status', 'to_status', 'message', 'created_at']
+    fields = ['event_type', 'from_status', 'to_status', 'message', 'created_at']
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ['number', 'user', 'provider', 'amount', 'currency', 'status', 'created_at', 'paid_at']
+    list_filter = ['status', 'provider', 'currency', 'created_at']
+    search_fields = ['number', 'user__username', 'provider_order_id', 'provider_payment_id']
+    readonly_fields = ['id', 'number', 'idempotency_key', 'provider_order_id', 'provider_payment_id',
+                       'created_at', 'updated_at', 'paid_at']
+    inlines = [PaymentEventInline]
+
+
+@admin.register(PaymentEvent)
+class PaymentEventAdmin(admin.ModelAdmin):
+    list_display = ['order', 'event_type', 'from_status', 'to_status', 'created_at']
+    list_filter = ['event_type', 'created_at']
+    search_fields = ['order__number', 'message']
+    readonly_fields = ['id', 'order', 'event_type', 'from_status', 'to_status', 'message', 'payload', 'created_at']

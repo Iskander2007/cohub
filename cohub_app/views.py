@@ -14,20 +14,21 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from django.db.models import Sum, Q, F
 from django.contrib.auth.password_validation import validate_password
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from PIL import Image, UnidentifiedImageError
 import hashlib
 import string
 import random
 from django.db import connection  
 
-from .models import Room, RoomMember, Task, TaskReassignmentRequest, Expense, ExpenseShare, UserProfile, ChatMessage, DebtSettlement, Loan, LoanPayment, Subscription
+from .models import Room, RoomMember, Task, TaskReassignmentRequest, Expense, ExpenseShare, UserProfile, ChatMessage, DebtSettlement, Loan, LoanPayment, Subscription, Order
 from .serializers import (
     RoomSerializer, RoomMemberSerializer, TaskSerializer, TaskReassignmentRequestSerializer,
     ExpenseSerializer, ExpenseShareSerializer, UserSerializer, ChatMessageSerializer,
     LoanSerializer, LoanPaymentSerializer, SubscriptionSerializer,
 )
 from .tasks import enqueue
+from . import analytics
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -295,6 +296,9 @@ class RoomViewSet(viewsets.ModelViewSet):
         room = serializer.save(owner=self.request.user, code=code)
         # Добавляем владельца как участника
         RoomMember.objects.create(room=room, user=self.request.user, is_admin=True)
+        analytics.capture_event(self.request.user, 'room_created', {
+            'room_id': str(room.id), 'source': 'api',
+        })
 
     def _ensure_room_manager(self, room):
         """A01/RBAC: изменять и удалять комнату может только владелец или глобальный admin.
@@ -340,9 +344,12 @@ class RoomViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Вы уже участник этой комнаты'}, status=status.HTTP_400_BAD_REQUEST)
         
         RoomMember.objects.create(room=room, user=request.user)
+        analytics.capture_event(request.user, 'room_joined', {
+            'room_id': str(room.id), 'source': 'api',
+        })
         serializer = self.get_serializer(room)
         return Response(serializer.data)
-    
+
     @action(detail='pk', methods=['get'])
     def statistics(self, request, pk=None):
         """Получить статистику по комнате"""
@@ -390,7 +397,7 @@ class RoomViewSet(viewsets.ModelViewSet):
         loan_notifications = []
         today = timezone.localdate()
         for loan in room.loans.select_related('lender', 'borrower').all():
-            remaining_amount = loan.refresh_status(save=True)
+            remaining_amount = loan.refresh_status(save=False)
             debtor_id = loan.borrower_id
             creditor_id = loan.lender_id
 
@@ -1117,6 +1124,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         """Создает задачу с текущим пользователем"""
         task = serializer.save(created_by=self.request.user)
         bump_room_cache(task.room_id)
+        analytics.capture_event(self.request.user, 'task_created', {
+            'room_id': str(task.room_id), 'priority': task.priority,
+        })
     
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
@@ -1136,6 +1146,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.completed_at = timezone.now()
         task.save(update_fields=['status', 'completed_at', 'updated_at'])
         bump_room_cache(task.room_id)
+        analytics.capture_event(request.user, 'task_completed', {
+            'room_id': str(task.room_id), 'priority': task.priority,
+        })
         TaskReassignmentRequest.objects.filter(task=task, status='pending').update(
             status='cancelled',
             responded_at=timezone.now(),
@@ -1186,24 +1199,43 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             expense.paid_by = None
             expense.save(update_fields=['paid_by', 'updated_at'])
         
-        # Автоматически распределяем расход на всех участников комнаты поровну
+        # Автоматически распределяем расход на всех участников комнаты поровну.
         room = expense.room
-        members = room.members.all()
-        if members.exists():
-            share_amount = expense.amount / members.count()
-            for member in members:
+        members = list(room.members.all())
+        count = len(members)
+        if count:
+            total = expense.amount or Decimal('0')
+            # Доля округляется вниз до копейки, а остаток округления раскидывается
+            # по первым участникам — так сумма всех долей в точности равна сумме
+            # расхода (иначе при делении 100/3 доли давали бы 99.99, и баланс
+            # комнаты никогда не сходился бы к нулю).
+            base = (total / count).quantize(Decimal('0.01'), rounding=ROUND_DOWN)
+            remainder_cents = int(((total - base * count) / Decimal('0.01')).to_integral_value())
+            for index, member in enumerate(members):
+                amount = base + (Decimal('0.01') if index < remainder_cents else Decimal('0'))
                 ExpenseShare.objects.create(
                     expense=expense,
                     user=member.user,
-                    amount=share_amount,
+                    amount=amount,
                     is_settled=mark_as_paid,
                 )
 
         bump_room_cache(room.id)
+        analytics.capture_event(self.request.user, 'expense_added', {
+            'room_id': str(room.id),
+            'amount': float(expense.amount or 0),
+            'category': expense.category,
+            'is_shared': bool(expense.is_shared),
+        })
 
 
-class ExpenseShareViewSet(viewsets.ModelViewSet):
-    """ViewSet для управления долями расходов"""
+class ExpenseShareViewSet(viewsets.ReadOnlyModelViewSet):
+    """Доли расходов: только чтение + явные действия settle/settle_between.
+
+    Доли создаются автоматически при создании расхода (ExpenseViewSet), поэтому
+    прямые create/update/delete намеренно отключены (ReadOnlyModelViewSet) — иначе
+    любой участник мог бы переписать чужой долг или сумму через PATCH.
+    """
     queryset = ExpenseShare.objects.all()
     serializer_class = ExpenseShareSerializer
     permission_classes = [IsAuthenticatedUser]
@@ -1296,6 +1328,10 @@ class LoanViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         loan = serializer.save(created_by=self.request.user)
         loan.refresh_status(save=True)
+        analytics.capture_event(self.request.user, 'loan_created', {
+            'room_id': str(loan.room_id),
+            'amount': float(loan.amount_total or 0),
+        })
 
     @action(detail=True, methods=['post'])
     def send_reminder(self, request, pk=None):
@@ -1364,7 +1400,10 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
         return queryset.select_related('author', 'room').order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        message = serializer.save(author=self.request.user)
+        analytics.capture_event(self.request.user, 'chat_message_sent', {
+            'room_id': str(message.room_id),
+        })
 
 
 class SubscriptionViewSet(viewsets.ViewSet):
@@ -1390,16 +1429,30 @@ class SubscriptionViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def activate(self, request):
-        """Активировать платную подписку (симуляция оплаты)"""
+        """Ручная активация PRO (только администратор / симуляция).
+
+        Боевая активация PRO происходит автоматически после подтверждённой оплаты
+        (process_callback → _activate_subscription). Этот ручной эндпоинт оставлен
+        как админ-инструмент: обычному пользователю он недоступен, иначе PRO можно
+        было бы получить бесплатно одним POST-запросом, минуя оплату.
+        """
+        if not is_admin(request.user):
+            return Response(
+                {'error': 'Подписка активируется автоматически после оплаты'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             subscription = request.user.subscription
         except Subscription.DoesNotExist:
             return Response({'error': 'Подписка не найдена'}, status=status.HTTP_404_NOT_FOUND)
-        
-        months = int(request.data.get('months', 1))
+
+        try:
+            months = int(request.data.get('months', 1))
+        except (TypeError, ValueError):
+            return Response({'error': 'Некорректное количество месяцев'}, status=status.HTTP_400_BAD_REQUEST)
         if months < 1 or months > 12:
             return Response({'error': 'Количество месяцев должно быть от 1 до 12'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         subscription.activate_paid(months=months)
         
         return Response({
@@ -1417,7 +1470,10 @@ class SubscriptionViewSet(viewsets.ViewSet):
             return Response({'error': 'Подписка не найдена'}, status=status.HTTP_404_NOT_FOUND)
         
         subscription.cancel()
-        
+        analytics.capture_event(request.user, 'subscription_cancelled', {
+            'subscription_id': str(subscription.id),
+        })
+
         return Response({
             'message': 'Подписка отменена',
             'status': subscription.get_status_display(),
@@ -1460,7 +1516,7 @@ def register_view(request):
 
         errors = []
         # CAPTCHA проверяется первой: отсекаем ботов до любой работы с БД.
-        if not validate_captcha(request, captcha_answer):
+        if not validate_captcha(request, captcha_answer, action='register'):
             errors.append('Неверный ответ на проверочный вопрос (CAPTCHA)')
         if not full_name:
             errors.append('Пожалуйста, укажите полное имя')
@@ -1520,6 +1576,9 @@ def register_view(request):
         user = authenticate(request, username=email, password=password)
         if user is not None:
             login(request, user)
+            # identify до события — Person сразу с email/именем/планом.
+            analytics.identify_user(user)
+            analytics.capture_event(user, 'user_signed_up', {'method': 'email'})
             messages.success(request, 'Регистрация прошла успешно')
             return redirect('dashboard')
 
@@ -1556,7 +1615,7 @@ def login_view(request):
             )
 
         # A07: CAPTCHA при входе мешает автоматическому подбору паролей.
-        if not validate_captcha(request, captcha_answer):
+        if not validate_captcha(request, captcha_answer, action='login'):
             register_failed_login_attempt(request, email)
             return render(request, 'login.html', {
                 'error': 'Неверный ответ на проверочный вопрос (CAPTCHA)',
@@ -1569,6 +1628,8 @@ def login_view(request):
         if user is not None:
             clear_failed_login_attempts(request, email)
             login(request, user)
+            analytics.identify_user(user)
+            analytics.capture_event(user, 'user_logged_in', {'method': 'email'})
             messages.success(request, 'Вы успешно вошли в систему')
             # A01: защита от open redirect — пускаем только на безопасные
             # внутренние адреса того же хоста, иначе на дашборд.
@@ -1630,7 +1691,10 @@ def create_room_view(request):
         
         # Добавляем владельца как администратора
         RoomMember.objects.create(room=room, user=request.user, is_admin=True)
-        
+        analytics.capture_event(request.user, 'room_created', {
+            'room_id': str(room.id), 'source': 'web',
+        })
+
         messages.success(request, f'Комната "{room_name}" создана! Код: {code}')
         return redirect('dashboard-room', room_id=room.id)
     
@@ -1660,6 +1724,9 @@ def join_room_view(request):
         
         # Добавляем как участника
         RoomMember.objects.create(room=room, user=request.user, is_admin=False)
+        analytics.capture_event(request.user, 'room_joined', {
+            'room_id': str(room.id), 'source': 'web',
+        })
         messages.success(request, f'Вы присоединились к комнате "{room.name}"!')
         return redirect('dashboard-room', room_id=room.id)
     
@@ -1715,7 +1782,7 @@ def build_dashboard_insights_preview(room):
     open_loan_count = 0
     overdue_loan_count = 0
     for loan in room.loans.select_related('borrower', 'lender').all():
-        remaining_amount = loan.refresh_status(save=True)
+        remaining_amount = loan.refresh_status(save=False)
         if remaining_amount > 0:
             open_loan_amount += remaining_amount
             open_loan_count += 1
@@ -1814,7 +1881,17 @@ def dashboard_view(request, room_id=None):
             return render(request, 'no_rooms.html')
 
     insights_preview = build_dashboard_insights_preview(room)
-    
+
+    # Feature flag (Week 5): промо-баннер PRO включается/выключается флагом
+    # 'pro-upsell-banner' в PostHog — без редеплоя. Без аналитики берётся
+    # значение по умолчанию из settings.FEATURE_FLAG_DEFAULTS.
+    show_pro_banner = analytics.feature_enabled(
+        'pro-upsell-banner', user,
+        default=settings.FEATURE_FLAG_DEFAULTS.get('pro-upsell-banner', False),
+    )
+    # Баннер логично показывать только тем, у кого ещё нет PRO.
+    show_pro_banner = show_pro_banner and analytics.user_plan(user) != 'pro'
+
     return render(request, 'dashboard.html', {
         'room': room,
         'rooms': rooms,
@@ -1824,6 +1901,7 @@ def dashboard_view(request, room_id=None):
         'show_insights_first': True,
         'show_budget_editor': True,
         'budget_button_label': 'Изменить сумму',
+        'show_pro_banner': show_pro_banner,
     })
 
 
@@ -1896,7 +1974,7 @@ def room_insights_view(request, room_id):
     for loan in room.loans.select_related('borrower', 'lender').all():
         finance_profiles[loan.lender_id]['loan_given'] += loan.amount_total or Decimal('0')
         finance_profiles[loan.borrower_id]['loan_borrowed'] += loan.amount_total or Decimal('0')
-        remaining_amount = loan.refresh_status(save=True)
+        remaining_amount = loan.refresh_status(save=False)
         finance_profiles[loan.borrower_id]['loan_remaining'] += remaining_amount
         if loan.is_overdue:
             finance_profiles[loan.borrower_id]['loan_overdue_count'] += 1
@@ -1947,7 +2025,7 @@ def room_insights_view(request, room_id):
     open_loan_count = 0
     overdue_loan_count = 0
     for loan in manual_loans:
-        remaining_amount = loan.refresh_status(save=True)
+        remaining_amount = loan.refresh_status(save=False)
         if remaining_amount > 0:
             open_loan_amount += remaining_amount
             open_loan_count += 1
@@ -2115,12 +2193,24 @@ def profile_view(request):
         elif action == 'update_info':
             full_name = request.POST.get('full_name', '').strip()
             email = request.POST.get('email', '').strip().lower()
+            changed_fields = []
             if full_name:
                 user.first_name = full_name.split(' ', 1)[0]
                 user.last_name = full_name.split(' ', 1)[1] if ' ' in full_name else ''
-            if email:
+                changed_fields += ['first_name', 'last_name']
+            if email and email != user.email:
+                # В проекте username == email, поэтому обновляем оба поля.
                 if User.objects.exclude(pk=user.pk).filter(username=email).exists():
                     messages.error(request, 'Пользователь с таким email уже существует')
+                else:
+                    user.username = email
+                    user.email = email
+                    changed_fields += ['username', 'email']
+            # Раньше изменения не сохранялись (не было user.save()) — форма
+            # «Информация» молча ничего не делала. Теперь реально пишем в БД.
+            if changed_fields:
+                user.save(update_fields=changed_fields)
+                info_success = True
     return render(request, 'profile.html', {
         'user_obj': user,
         'profile': profile,
@@ -2134,4 +2224,80 @@ def profile_view(request):
 @login_required
 def subscription_view(request):
     """Страница управления подпиской"""
+    # Шаг воронки subscription_viewed (signup → room → subscription → payment).
+    analytics.capture_event(request.user, 'subscription_viewed', {})
     return render(request, 'subscription.html')
+
+
+@login_required
+def kpi_dashboard_view(request):
+    """KPI-дашборд (Week 5): conversion rate, MRR, churn — на реальных данных.
+
+    Доступ — только staff/админ: это внутренняя бизнес-метрика. Сами числа
+    считает analytics_kpis() (та же логика в management-команде kpi_report).
+    """
+    if not is_admin(request.user):
+        messages.error(request, 'KPI-дашборд доступен только администратору')
+        return redirect('dashboard')
+    return render(request, 'kpi_dashboard.html', {'kpi': compute_kpis()})
+
+
+def compute_kpis(period_days=30):
+    """Считает продуктовые KPI из моделей Subscription/Order/User.
+
+    Возвращает словарь с числами и пояснениями. Формулы намеренно простые и
+    задокументированы в ANALYTICS.md — это снимок (snapshot), а не точная
+    когортная аналитика.
+    """
+    now = timezone.now()
+    period_start = now - timedelta(days=period_days)
+
+    total_users = User.objects.count()
+    # PRO = сейчас активная платная подписка.
+    pro_users = Subscription.objects.filter(status='active', paid_end__gte=now).count()
+    trial_users = Subscription.objects.filter(status='trial', trial_end__gte=now).count()
+
+    # Conversion rate = доля пользователей, доведённых до платной подписки.
+    conversion_rate = (pro_users / total_users * 100) if total_users else 0.0
+
+    # MRR = месячная выручка. Каждый оплаченный заказ нормируем к месяцу
+    # (amount / months) и берём заказы, оплаченные за последние 30 дней.
+    # ВАЖНО: заказы бывают в разных валютах (Bereke — KZT, PayPal — USD).
+    # Складывать 9.99 и 5000 как одну валюту нельзя, поэтому USD-суммы
+    # конвертируем в KZT по конфиг-курсу settings.USD_TO_KZT_RATE.
+    monthly_price = Decimal(str(getattr(settings, 'SUBSCRIPTION_PRICE_KZT', '5000')))
+    usd_to_kzt = Decimal(str(getattr(settings, 'USD_TO_KZT_RATE', '475')))
+    paid_orders = Order.objects.filter(status=Order.STATUS_PAID, paid_at__gte=period_start)
+    mrr = Decimal('0')
+    for order in paid_orders.only('amount', 'subscription_months', 'currency'):
+        months = order.subscription_months or 1
+        amount_kzt = order.amount or Decimal('0')
+        if order.currency == 'USD':
+            amount_kzt = amount_kzt * usd_to_kzt
+        mrr += amount_kzt / months
+    # Если оплат ещё не было — оценим MRR по активным подпискам и цене тарифа.
+    if mrr == 0 and pro_users:
+        mrr = monthly_price * pro_users
+
+    # Churn = отток. Доля отменённых/истёкших среди тех, кто вообще доходил до
+    # платной подписки (активные + отвалившиеся).
+    cancelled = Subscription.objects.filter(status__in=['cancelled', 'expired']).count()
+    churn_base = pro_users + cancelled
+    churn_rate = (cancelled / churn_base * 100) if churn_base else 0.0
+
+    paid_count = paid_orders.count()
+    arpu = (float(mrr) / pro_users) if pro_users else 0.0
+
+    return {
+        'period_days': period_days,
+        'total_users': total_users,
+        'pro_users': pro_users,
+        'trial_users': trial_users,
+        'conversion_rate': round(conversion_rate, 1),
+        'mrr': round(float(mrr), 2),
+        'arpu': round(arpu, 2),
+        'churn_rate': round(churn_rate, 1),
+        'cancelled_users': cancelled,
+        'paid_orders_30d': paid_count,
+        'currency': 'KZT',
+    }

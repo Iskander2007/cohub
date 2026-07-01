@@ -1,0 +1,65 @@
+# Локальный стек мониторинга COHUB: Prometheus + Alertmanager + Grafana.
+#
+# Django-приложение запускается ОТДЕЛЬНО на хосте (порт 8000):
+#   cd cohub && python manage.py runserver 0.0.0.0:8000
+# Prometheus скрейпит его через host.docker.internal:8000.
+#
+# Поднять стек:   docker compose -f monitoring/docker-compose.yml up -d
+# Grafana:        http://localhost:3000      (admin / admin)
+# Prometheus:     http://localhost:9090
+# Alertmanager:   http://localhost:9093
+#
+# Дашборд «COHUB · 4 золотых сигнала» и источник данных Prometheus
+# подключаются автоматически (provisioning).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: cohub-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    extra_hosts:
+      # Гарантируем доступность хоста по host.docker.internal на Linux.
+      - "host.docker.internal:host-gateway"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: cohub-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: cohub-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:

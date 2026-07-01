@@ -1,0 +1,49 @@
+# Prometheus конфигурация для мониторинга COHUB.
+#
+# Prometheus скрейпит Django-приложение через эндпоинт
+#   GET /api/metrics/prometheus/  (text/plain; version=0.0.4)
+# и хранит time-series для Grafana и Alertmanager.
+#
+# Запускается в составе monitoring/docker-compose.yml.
+
+global:
+  scrape_interval: 15s        # как часто опрашиваем таргеты
+  evaluation_interval: 15s    # как часто пересчитываем alert-правила
+  external_labels:
+    project: cohub
+    env: local
+
+# Подключаем файл с правилами алертов (server down / error rate / latency / ...).
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+# Куда Prometheus отправляет сработавшие алерты.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  # Сам Prometheus (полезно для self-мониторинга).
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Django-приложение COHUB.
+  # ВАЖНО: приложение работает на ХОСТЕ (python manage.py runserver / gunicorn),
+  # а Prometheus — в контейнере, поэтому используем host.docker.internal.
+  # На Render/Linux замените target на публичный адрес сервиса
+  # (например cohub-web.onrender.com:443 + scheme: https).
+  - job_name: cohub
+    metrics_path: /api/metrics/prometheus/
+    scheme: http
+    # Если на проде задан METRICS_TOKEN (см. settings.py), раскомментируйте, чтобы
+    # Prometheus аутентифицировал scrape (иначе эндпоинт вернёт 403):
+    # authorization:
+    #   type: Bearer
+    #   credentials: '<тот же METRICS_TOKEN>'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+        labels:
+          service: cohub-web

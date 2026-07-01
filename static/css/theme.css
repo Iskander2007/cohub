@@ -1,0 +1,746 @@
+/* ============================================================================
+   COHUB — Theme overlay (редизайн)
+   Загружается ПОСЛЕ style.css и переопределяет дизайн-токены и внешний вид
+   компонентов, не трогая разметку и JS. Сохраняет «стеклянный» бирюзовый стиль,
+   но делает его чище и современнее (вдохновлено Tabler).
+   Откат: убрать <link> на этот файл в base.html.
+   ============================================================================ */
+
+/* ─────────────────────────── Дизайн-токены ─────────────────────────────── */
+:root {
+    /* Бирюзовая палитра, освежённая */
+    --primary: #0fb6a8;
+    --primary-strong: #0c8e84;
+    --primary-dark: #0a6f67;
+    --primary-soft: rgba(15, 182, 168, 0.12);
+    --primary-softer: rgba(15, 182, 168, 0.06);
+    --accent: #22d3ee;
+
+    /* Фон страницы и стеклянные поверхности */
+    --page-bg: #e9f3f1;
+    --surface: rgba(255, 255, 255, 0.74);
+    --surface-solid: #ffffff;
+    --panel-bg: rgba(252, 254, 253, 0.84);
+    --glass-bg: rgba(255, 255, 255, 0.52);
+
+    /* Текст */
+    --text: #112e2b;
+    --muted: #5a7672;
+
+    /* Границы, тени, радиусы, фокус */
+    --border-soft: rgba(13, 90, 84, 0.10);
+    --border-strong: rgba(13, 90, 84, 0.16);
+    --shadow-sm: 0 1px 2px rgba(16, 49, 46, 0.06), 0 1px 3px rgba(16, 49, 46, 0.04);
+    --shadow: 0 8px 22px rgba(16, 49, 46, 0.09);
+    --shadow-lg: 0 20px 44px rgba(16, 49, 46, 0.14);
+    --radius: 18px;
+    --radius-sm: 11px;
+    --radius-pill: 999px;
+    --ring: 0 0 0 4px rgba(15, 182, 168, 0.18);
+
+    --grad-primary: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+    --grad-accent: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+}
+
+html[data-theme='dark'] {
+    --primary: #2dd4bf;
+    --primary-strong: #14b8a6;
+    --primary-dark: #0d9488;
+    --primary-soft: rgba(45, 212, 191, 0.14);
+    --primary-softer: rgba(45, 212, 191, 0.07);
+    --accent: #38bdf8;
+
+    --page-bg: #0a1413;
+    --surface: rgba(23, 35, 34, 0.74);
+    --surface-solid: #14201f;
+    --panel-bg: rgba(20, 31, 30, 0.86);
+    --glass-bg: rgba(18, 28, 27, 0.56);
+
+    --text: #e6f4f1;
+    --muted: #8fb0ab;
+
+    --border-soft: rgba(120, 210, 200, 0.14);
+    --border-strong: rgba(120, 210, 200, 0.22);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+    --shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.5);
+    --ring: 0 0 0 4px rgba(45, 212, 191, 0.2);
+}
+
+/* ─────────────────────────── Типографика ──────────────────────────────── */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: 0.1px;
+}
+
+/* ───────────────────────── Современный фон ─────────────────────────────── */
+body::before {
+    background:
+        linear-gradient(rgba(15, 182, 168, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 182, 168, 0.05) 1px, transparent 1px),
+        radial-gradient(ellipse 70% 55% at 12% 6%, rgba(34, 211, 238, 0.30) 0%, transparent 58%),
+        radial-gradient(ellipse 60% 55% at 88% 92%, rgba(15, 182, 168, 0.28) 0%, transparent 56%),
+        radial-gradient(ellipse 80% 80% at 50% 45%, rgba(238, 250, 248, 0.85) 0%, transparent 100%),
+        linear-gradient(160deg, #e3f2ef 0%, #e9f3f1 42%, #def0ec 78%, #d4ece7 100%) !important;
+    background-size: 44px 44px, 44px 44px, auto, auto, auto, auto !important;
+}
+
+html[data-theme='dark'] body::before {
+    background:
+        linear-gradient(rgba(45, 212, 191, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(45, 212, 191, 0.06) 1px, transparent 1px),
+        radial-gradient(ellipse 75% 55% at 14% 6%, rgba(56, 189, 248, 0.16) 0%, transparent 60%),
+        radial-gradient(ellipse 62% 52% at 86% 90%, rgba(20, 184, 166, 0.18) 0%, transparent 56%),
+        radial-gradient(ellipse 78% 78% at 50% 48%, rgba(10, 20, 19, 0.92) 0%, transparent 100%),
+        linear-gradient(160deg, #0c1817 0%, #0a1413 46%, #08110f 100%) !important;
+    background-size: 44px 44px, 44px 44px, auto, auto, auto, auto !important;
+}
+
+/* ───────────────────── Внешний стеклянный контейнер ────────────────────── */
+.glass-container {
+    background: var(--panel-bg);
+    border-radius: 26px;
+    border: 1px solid var(--border-soft);
+    box-shadow:
+        var(--shadow-lg),
+        inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(16px) saturate(120%);
+}
+
+html[data-theme='dark'] .glass-container {
+    border-color: var(--border-soft);
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(120, 210, 200, 0.08);
+}
+
+/* ─────────────────────────────── Сайдбар ──────────────────────────────── */
+.sidebar {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.25));
+    border-right: 1px solid var(--border-soft);
+}
+
+html[data-theme='dark'] .sidebar {
+    background: linear-gradient(180deg, rgba(28, 43, 42, 0.6), rgba(20, 31, 30, 0.4));
+    border-right-color: var(--border-soft);
+}
+
+/* Логотип — это SVG-картинка (text-indent прячет текст), а не текст.
+   Тёмный вариант на светлой теме, белый — на тёмной. */
+.logo {
+    background-image: url("../img/image_black.svg");
+}
+
+html[data-theme='dark'] .logo {
+    background-image: url("../img/image_white.svg");
+}
+
+/* ──────────────────────────────── Карточки ────────────────────────────── */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    -webkit-backdrop-filter: blur(10px) saturate(115%);
+    backdrop-filter: blur(10px) saturate(115%);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--border-strong);
+}
+
+html[data-theme='dark'] .card {
+    background: linear-gradient(180deg, rgba(28, 42, 41, 0.86), rgba(22, 34, 33, 0.84));
+    border-color: var(--border-soft);
+    box-shadow: var(--shadow-sm);
+}
+
+html[data-theme='dark'] .card:hover {
+    box-shadow: var(--shadow);
+}
+
+.card-title {
+    letter-spacing: 0.2px;
+}
+
+/* ──────────────────────────────── Кнопки ──────────────────────────────── */
+.btn {
+    background: var(--grad-primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 6px 16px rgba(12, 142, 132, 0.28);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(12, 142, 132, 0.34);
+    filter: brightness(1.03);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 12px rgba(12, 142, 132, 0.26);
+}
+
+.btn-secondary,
+.btn-secondary-link {
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    border: 1px solid var(--border-strong);
+    box-shadow: none;
+}
+
+.btn-secondary:hover,
+.btn-secondary-link:hover {
+    background: var(--primary-soft);
+    filter: brightness(0.98);
+    border-color: var(--primary);
+}
+
+html[data-theme='dark'] .btn-secondary,
+html[data-theme='dark'] .btn-secondary-link {
+    color: #d7f5f0;
+}
+
+/* «Опасные» мягкие кнопки (используются в JS-вставках дашборда) */
+.btn-danger-soft {
+    border-radius: var(--radius-sm);
+}
+
+/* ────────────────────────── Поля ввода / формы ─────────────────────────── */
+.input-group label {
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.input-group input,
+.input-group textarea,
+.input-group select,
+.join-block input,
+select {
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.input-group input:focus,
+.input-group textarea:focus,
+.input-group select:focus,
+.join-block input:focus,
+select:focus {
+    border-color: var(--primary);
+    box-shadow: var(--ring);
+    outline: none;
+}
+
+html[data-theme='dark'] .input-group input,
+html[data-theme='dark'] .input-group textarea,
+html[data-theme='dark'] .input-group select,
+html[data-theme='dark'] select,
+html[data-theme='dark'] .join-block input {
+    background: rgba(12, 20, 19, 0.85);
+    border-color: var(--border-strong);
+}
+
+/* ─────────────────────── Навигация в сайдбаре ──────────────────────────── */
+.nav-item {
+    border-radius: var(--radius-sm);
+    transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.nav-item:hover {
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    transform: translateX(2px);
+}
+
+html[data-theme='dark'] .nav-item:hover {
+    color: #d7f5f0;
+}
+
+/* ──────────────────────── Лендинг: hero и фичи ─────────────────────────── */
+.hero h1 {
+    background: linear-gradient(120deg, var(--text) 0%, var(--primary-dark) 60%, var(--primary) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+    line-height: 1.12;
+}
+
+html[data-theme='dark'] .hero h1 {
+    background: linear-gradient(120deg, #eafffb 0%, var(--primary) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.feature {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.feature:hover {
+    transform: translateY(-3px);
+    border-color: var(--primary);
+}
+
+/* ──────────────────────── Переключатель темы ───────────────────────────── */
+.theme-toggle {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-sm);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(12px) saturate(120%);
+}
+
+.theme-toggle:hover {
+    box-shadow: var(--shadow);
+    border-color: var(--primary);
+}
+
+/* ───────────────── Кнопка помощи (лендинг) и плавающие ─────────────────── */
+.help-button {
+    background: var(--grad-primary);
+    box-shadow: 0 8px 20px rgba(12, 142, 132, 0.34);
+}
+
+/* ───────────────────────── Модальные окна ─────────────────────────────── */
+.modal-content,
+.privacy-modal-box,
+.pay-box,
+.result-box {
+    border-radius: var(--radius);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-overlay,
+.privacy-modal-overlay,
+.modal {
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+
+.onboarding-step h2 {
+    background: var(--grad-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ─────────────── Подписка / тарифы — мягкая полировка ──────────────────── */
+.subscription-card {
+    border-radius: var(--radius);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.subscription-card.featured {
+    border-color: var(--primary);
+    box-shadow: var(--shadow);
+}
+
+.subscription-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ─────────────────── Flash-сообщения (Django messages) ─────────────────── */
+.cohub-flash-stack {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(520px, calc(100% - 36px));
+    pointer-events: none;
+}
+
+.cohub-flash {
+    pointer-events: auto;
+    padding: 13px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-left: 4px solid var(--primary);
+    box-shadow: var(--shadow);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    animation: cohub-flash-in 0.28s ease;
+}
+
+.cohub-flash--success {
+    border-left-color: #16a34a;
+}
+
+.cohub-flash--error,
+.cohub-flash--danger {
+    border-left-color: #dc2626;
+}
+
+.cohub-flash--warning {
+    border-left-color: #d97706;
+}
+
+.cohub-flash--info {
+    border-left-color: var(--primary);
+}
+
+@keyframes cohub-flash-in {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ───────────────────── Стилизованный скроллбар ─────────────────────────── */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-soft) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--primary-soft);
+    border-radius: var(--radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+    background-clip: padding-box;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Интеграция Tabler core (вендорено локально)
+   Tabler грузится ДО style.css, поэтому общий glass-скин .card/.btn побеждает.
+   Здесь перекрашиваем токены Tabler в бирюзу и приводим НОВЫЕ классы Tabler
+   (.form-control, .form-label, .badge, .page-header…) к нашему стеклянному виду.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+    --tblr-primary: #0fb6a8;
+    --tblr-primary-rgb: 15, 182, 168;
+    --tblr-link-color: #0c8e84;
+    --tblr-link-color-rgb: 12, 142, 132;
+    --tblr-border-radius: 11px;
+    --tblr-border-radius-lg: 16px;
+    --tblr-font-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+html[data-theme='dark'] {
+    --tblr-primary: #2dd4bf;
+    --tblr-primary-rgb: 45, 212, 191;
+    --tblr-link-color: #5eead4;
+    --tblr-link-color-rgb: 94, 234, 212;
+}
+
+/* Поля Tabler (.form-control/.form-select) — стеклянный вид как у .input-group */
+.form-control,
+.form-select {
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+    background: var(--surface-solid);
+    border-color: var(--primary);
+    box-shadow: var(--ring);
+    color: var(--text);
+}
+
+.form-control::placeholder {
+    color: var(--muted);
+    opacity: 0.7;
+}
+
+.form-label {
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+/* Tabler-карточки/empty в стеклянном шелле — наследуют наш surface */
+.card.card-tabler,
+.empty {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+}
+
+/* Тёмная тема Tabler-полей */
+html[data-theme='dark'] .form-control,
+html[data-theme='dark'] .form-select {
+    background: rgba(12, 20, 19, 0.85);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+/* Бейджи Tabler в бирюзовой гамме */
+.badge.bg-primary,
+.badge.badge-primary {
+    background: var(--grad-primary) !important;
+    color: #fff;
+}
+
+/* ───────────────────────── Лендинг: hero-badge + фичи ──────────────────── */
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 18px;
+    padding: 6px 14px;
+    border-radius: var(--radius-pill);
+    background: var(--primary-soft);
+    border: 1px solid var(--border-strong);
+    color: var(--primary-dark);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+html[data-theme='dark'] .hero-badge {
+    color: #d7f5f0;
+}
+
+.landing-features {
+    margin-top: 34px;
+}
+
+.landing-features .feature {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.feature-ic {
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+    border-radius: 13px;
+    background: var(--primary-soft);
+    border: 1px solid var(--border-strong);
+    font-size: 22px;
+    line-height: 1;
+}
+
+/* ──────────────── Страницы входа/регистрации: шапка, разделитель ────────── */
+.auth-head {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.auth-logo {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 15px;
+    background: var(--grad-primary);
+    color: #fff;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 8px 20px rgba(12, 142, 132, 0.32);
+}
+
+.register-subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 6px;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-strong);
+}
+
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 0;
+    background: var(--surface-solid);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    box-shadow: none;
+    text-decoration: none;
+}
+
+.btn-google:hover {
+    background: var(--surface-solid);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-sm);
+    filter: none;
+}
+
+.btn-google__g {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    color: #4285F4;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+/* ───────────────────────── Пустое состояние (no_rooms) ─────────────────── */
+.empty-state-ic {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 20px;
+    background: var(--primary-soft);
+    border: 1px solid var(--border-strong);
+    font-size: 34px;
+    line-height: 1;
+}
+
+/* ─────────────────────────────── KPI-дашборд ───────────────────────────── */
+.kpi-main {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 32px 24px;
+}
+
+.kpi-header {
+    margin-bottom: 22px;
+}
+
+.kpi-header h1 {
+    margin: 0 0 6px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+}
+
+.kpi-sub {
+    color: var(--muted);
+    max-width: 760px;
+    line-height: 1.5;
+}
+
+.kpi-cards {
+    margin-bottom: 22px;
+}
+
+.kpi-card {
+    text-align: left;
+}
+
+.kpi-value {
+    font-size: 2.3rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin: 6px 0 4px;
+    background: var(--grad-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.kpi-cur {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.kpi-note {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.kpi-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.kpi-table td {
+    padding: 11px 4px;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.kpi-table tr:last-child td {
+    border-bottom: none;
+}
+
+.kpi-table td:last-child {
+    text-align: right;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+html[data-theme='dark'] .kpi-table td:last-child {
+    color: #7fe8dc;
+}
+
+.kpi-details {
+    margin-bottom: 18px;
+}
+
+.kpi-formulas {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.kpi-formulas code {
+    background: var(--primary-soft);
+    padding: 1px 6px;
+    border-radius: 6px;
+}

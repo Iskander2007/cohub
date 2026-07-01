@@ -123,7 +123,11 @@ def google_callback_view(request):
         return redirect('login')
 
     email = (info.get('email') or '').strip().lower()
-    if not email or not info.get('email_verified', True):
+    # Fail-closed: принимаем вход только при ЯВНО подтверждённом email
+    # (email_verified === True). Отсутствующее/ложное/«просто истинное» значение
+    # отвергаем, чтобы Google-вход нельзя было привязать к чужому паролю-аккаунту
+    # с тем же email.
+    if not email or info.get('email_verified') is not True:
         messages.error(request, 'Google не предоставил подтверждённый email.')
         return redirect('login')
 

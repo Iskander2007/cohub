@@ -6,7 +6,7 @@ import time
 
 from django.core.management.base import BaseCommand
 
-from cohub_app.tasks import run_pending_tasks
+from cohub_app.tasks import run_pending_tasks, requeue_stale_tasks
 
 
 class Command(BaseCommand):
@@ -26,6 +26,10 @@ class Command(BaseCommand):
         batch = options['batch']
 
         self.stdout.write(self.style.SUCCESS('Воркер очереди запущен'))
+        # Подберём задачи, зависшие в 'running' после падения прошлого воркера.
+        recovered = requeue_stale_tasks()
+        if recovered:
+            self.stdout.write(self.style.WARNING(f'Восстановлено зависших задач: {recovered}'))
         try:
             while True:
                 count = run_pending_tasks(limit=batch)

@@ -10,6 +10,9 @@
     <nav class="nav">
         {% if user.is_authenticated %}
         <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
+        {% if user.is_staff %}
+        <a href="{% url 'kpi-dashboard' %}" class="nav-item">📊 KPI</a>
+        {% endif %}
         <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
         {% else %}
         <a href="{% url 'login' %}" class="nav-item">👤 Войти</a>
@@ -22,43 +25,54 @@
 <main class="main landing">
     <!-- HERO -->
     <section class="hero">
+        <span class="hero-badge">✨ Совместная жизнь без хаоса</span>
         <h1>Управляйте совместной жизнью легко</h1>
-        <p>COHUB помогает распределять обязанности, отслеживать расходы и поддерживать порядок в совместной квартире.
-        </p>
+        <p>COHUB помогает распределять обязанности, отслеживать расходы и поддерживать порядок в совместной квартире.</p>
 
         {% if user.is_authenticated %}
         <div class="join-block">
-            <a href="{% url 'create-room' %}" class="btn">➕ СОЗДАТЬ КОМНАТУ</a>
-            <a href="{% url 'join-room' %}" class="btn btn-secondary-link">🔗 ПРИСОЕДИНИТЬСЯ</a>
+            <a href="{% url 'create-room' %}" class="btn">➕ Создать комнату</a>
+            <a href="{% url 'join-room' %}" class="btn btn-secondary-link">🔗 Присоединиться</a>
         </div>
         {% else %}
         <div class="join-block">
             <input type="text" id="room-code" placeholder="Введите код комнаты">
-            <button class="btn" onclick="joinRoom()">ВСТУПИТЬ В КОМАНДУ</button>
+            <button class="btn" onclick="joinRoom()">Вступить в команду</button>
         </div>
         {% endif %}
     </section>
 
     <!-- FEATURES -->
-    <section class="features">
-        <div class="card feature">
-            <h3>📋 Управление задачами</h3>
-            <p>Распределяйте обязанности и следите за выполнением в реальном времени.</p>
-        </div>
-
-        <div class="card feature">
-            <h3>💰 Контроль расходов</h3>
-            <p>Отслеживайте бюджет и общие траты по комнате, видите баланс каждого.</p>
-        </div>
-
-        <div class="card feature">
-            <h3>📊 Аналитика</h3>
-            <p>Смотрите прогресс выполнения задач, график расходов и статистику.</p>
-        </div>
-
-        <div class="card feature">
-            <h3>👥 Командная работа</h3>
-            <p>Координируйте действия с соседями и ведите общий календарь.</p>
+    <section class="landing-features">
+        <div class="row row-cards row-deck">
+            <div class="col-sm-6 col-xl-3">
+                <div class="card feature">
+                    <div class="feature-ic">📋</div>
+                    <h3>Управление задачами</h3>
+                    <p>Распределяйте обязанности и следите за выполнением в реальном времени.</p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card feature">
+                    <div class="feature-ic">💰</div>
+                    <h3>Контроль расходов</h3>
+                    <p>Отслеживайте бюджет и общие траты по комнате, видите баланс каждого.</p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card feature">
+                    <div class="feature-ic">📊</div>
+                    <h3>Аналитика</h3>
+                    <p>Смотрите прогресс выполнения задач, график расходов и статистику.</p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card feature">
+                    <div class="feature-ic">👥</div>
+                    <h3>Командная работа</h3>
+                    <p>Координируйте действия с соседями и ведите общий календарь.</p>
+                </div>
+            </div>
         </div>
     </section>
 </main>

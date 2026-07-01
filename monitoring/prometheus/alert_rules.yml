@@ -1,0 +1,146 @@
+# Правила алертов Prometheus для COHUB.
+#
+# Загружаются Prometheus (rule_files в prometheus.yml) и оцениваются каждые
+# evaluation_interval. Сработавшие алерты уходят в Alertmanager, который
+# маршрутизирует их по командам/каналам (см. alertmanager/alertmanager.yml).
+#
+# Покрывает три обязательных сигнала: server down, error rate, latency,
+# плюс насыщение ресурсов (CPU/RAM) и здоровье платежей.
+
+groups:
+  # ──────────────────────── RECORDING RULES ────────────────────────
+  # Оконные (windowed) метрики, вычисляемые Prometheus из счётчиков.
+  # ЗАЧЕМ: приложение отдаёт cohub_error_rate_percent как долю ошибок за ВСЁ
+  # время жизни процесса (накопительно). На долго живущем сервисе всплеск 5xx
+  # почти не сдвигает эту усреднённую долю — алерт на накопительный gauge
+  # практически никогда не сработал бы. Поэтому error/payment rate считаем в
+  # скользящем окне через rate() по counter'ам — такая величина чувствительна
+  # именно к ТЕКУЩЕМУ всплеску. Эти series используются и в алертах, и на дашборде.
+  - name: cohub_recording
+    interval: 15s
+    rules:
+      - record: cohub:error_rate_5m:percent
+        expr: 100 * rate(cohub_errors_total[5m]) / clamp_min(rate(cohub_requests_total[5m]), 0.001)
+      - record: cohub:payment_failure_rate_30m:percent
+        expr: 100 * rate(cohub_payments_failed[30m]) / clamp_min(rate(cohub_payments_total[30m]), 0.001)
+
+  - name: cohub_availability
+    interval: 15s
+    rules:
+      # ───────────────────────── SERVER DOWN ─────────────────────────
+      # `up` генерируется самим Prometheus для каждого таргета: 1 если scrape
+      # удался, 0 если приложение не ответило. Это самый надёжный признак
+      # «сервер лежит» — не зависит от того, успело ли приложение посчитать
+      # свои внутренние метрики.
+      - alert: CohubServerDown
+        expr: up{job="cohub"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          signal: availability
+        annotations:
+          summary: "🚨 COHUB недоступен (server down)"
+          description: >-
+            Prometheus не может опросить {{ $labels.instance }} более 1 минуты.
+            Приложение не отвечает на /api/metrics/prometheus/.
+
+      # Резервный признак отказа: приложение отвечает, но >50% запросов — ошибки.
+      # Берём ОКОННЫЙ error rate (recording rule), а не накопительный gauge.
+      - alert: CohubErrorStorm
+        expr: cohub:error_rate_5m:percent > 50
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          signal: errors
+        annotations:
+          summary: "🚨 COHUB: шторм ошибок (error rate > 50%)"
+          description: "Текущий error rate {{ $value | printf \"%.1f\" }}% — сервис деградировал."
+
+  - name: cohub_errors
+    interval: 15s
+    rules:
+      # ───────────────────────── ERROR RATE ─────────────────────────
+      - alert: CohubHighErrorRate
+        expr: cohub:error_rate_5m:percent > 5 and cohub:error_rate_5m:percent <= 50
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          signal: errors
+        annotations:
+          summary: "⚠️ COHUB: повышенный error rate"
+          description: "Error rate {{ $value | printf \"%.1f\" }}% выше порога 5% уже 5 минут."
+
+  - name: cohub_latency
+    interval: 15s
+    rules:
+      # ───────────────────────── LATENCY ─────────────────────────
+      - alert: CohubHighLatency
+        expr: cohub_p95_latency_ms > 5000
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+          signal: latency
+        annotations:
+          summary: "⚠️ COHUB: высокая задержка (p95 > 5s)"
+          description: "p95 latency {{ $value | printf \"%.0f\" }}ms превышает порог 5000ms."
+
+      # Ранний сигнал деградации задержки.
+      - alert: CohubElevatedLatency
+        expr: cohub_p95_latency_ms > 2000 and cohub_p95_latency_ms <= 5000
+        for: 5m
+        labels:
+          severity: info
+          team: backend
+          signal: latency
+        annotations:
+          summary: "ℹ️ COHUB: задержка выше нормы (p95 > 2s)"
+          description: "p95 latency {{ $value | printf \"%.0f\" }}ms — стоит присмотреться."
+
+  - name: cohub_saturation
+    interval: 30s
+    rules:
+      # ───────────────────────── SATURATION (CPU/RAM) ─────────────────────────
+      - alert: CohubHighCPU
+        expr: cohub_cpu_usage > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          signal: saturation
+        annotations:
+          summary: "⚠️ COHUB: высокая загрузка CPU"
+          description: "CPU {{ $value | printf \"%.0f\" }}% > 80% уже 5 минут."
+
+      - alert: CohubHighMemory
+        expr: cohub_memory_usage > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          signal: saturation
+        annotations:
+          summary: "⚠️ COHUB: высокое потребление памяти"
+          description: "Memory {{ $value | printf \"%.0f\" }}% > 85% уже 5 минут."
+
+  - name: cohub_payments
+    interval: 30s
+    rules:
+      # ───────────────────────── PAYMENTS ─────────────────────────
+      # Оконный failure rate платежей (recording rule) > 10% при наличии платежей
+      # в окне. Guard rate(cohub_payments_total[30m]) > 0 отсекает пустую систему.
+      # Как и error rate, считаем в окне, а не из накопительного success_rate за
+      # всё время — иначе свежая серия отказов «тонула» бы в истории успехов.
+      - alert: CohubPaymentFailureRateHigh
+        expr: cohub:payment_failure_rate_30m:percent > 10 and rate(cohub_payments_total[30m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+          signal: payments
+        annotations:
+          summary: "🚨 COHUB: высокий процент неуспешных платежей"
+          description: "Failure rate платежей {{ $value | printf \"%.1f\" }}% > 10% за последние 30 минут."

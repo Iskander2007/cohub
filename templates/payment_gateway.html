@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — Оплата заказа {{ order.number }}{% endblock %}
+
+{% block content %}
+<style>
+    .pay-box { max-width: 480px; margin: 3rem auto; background: #fff; border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12); overflow: hidden; }
+    .pay-box__head { background: linear-gradient(135deg, #2aa8a3 0%, #1a7a73 100%);
+        color: #fff; padding: 1.5rem 2rem; }
+    .pay-box__head h1 { font-size: 1.3rem; margin: 0; }
+    .pay-box__sandbox { display: inline-block; margin-top: .5rem; font-size: .75rem;
+        background: rgba(255,255,255,.25); padding: 2px 10px; border-radius: 10px; }
+    .pay-box__sandbox--live { background: rgba(255, 193, 7, 0.3); color: #ffc107; }
+    .pay-box__body { padding: 2rem; }
+    .pay-row { display: flex; justify-content: space-between; padding: .6rem 0;
+        border-bottom: 1px solid #f0f0f0; }
+    .pay-row span:first-child { color: #777; }
+    .pay-amount { font-size: 2.2rem; font-weight: 700; color: #2aa8a3; text-align: center;
+        margin: 1.5rem 0; }
+    .pay-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+    .pay-actions button { flex: 1; padding: .9rem; font-size: 1rem; font-weight: 600;
+        border: none; border-radius: 10px; cursor: pointer; }
+    .btn-pay { background: #2aa8a3; color: #fff; }
+    .btn-fail { background: #f3f3f3; color: #c62828; }
+    .card-fields { display: grid; gap: 1rem; margin-top: 1.5rem; }
+    .card-fields label { display: block; font-size: .95rem; color: #444; }
+    .card-fields input { width: 100%; margin-top: .5rem; padding: .9rem 1rem; border: 1px solid #ddd;
+        border-radius: 12px; font-size: 1rem; }
+    .card-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .pay-note { font-size: .8rem; color: #999; text-align: center; margin-top: 1.2rem; }
+    .pay-info { background: #f0f8ff; border-left: 4px solid #2aa8a3; padding: 1rem; margin-bottom: 1.5rem;
+        border-radius: 4px; font-size: .9rem; color: #333; }
+    .pay-info strong { color: #2aa8a3; }
+</style>
+
+<div class="pay-box">
+    <div class="pay-box__head">
+        <h1>💳 {{ provider_name }}</h1>
+        <span class="pay-box__sandbox {% if is_real_api %}pay-box__sandbox--live{% endif %}">
+            {% if is_real_api %}🔐 РЕАЛЬНЫЙ РЕЖИМ{% else %}SANDBOX · тестовый режим{% endif %}
+        </span>
+    </div>
+    <div class="pay-box__body">
+        <div class="pay-row"><span>Заказ</span><span>{{ order.number }}</span></div>
+        <div class="pay-row"><span>Назначение</span><span>{{ order.description }}</span></div>
+        <div class="pay-row"><span>Статус</span><span>{{ order.get_status_display }}</span></div>
+        <div class="pay-amount">{{ order.amount }} {{ order.currency }}</div>
+
+        {% if is_open %}
+            {% if is_real_api %}
+            <div class="pay-info">
+                <strong>⚠️ Реальная оплата</strong><br>
+                Вас перенаправит на {{ provider_name }} для ввода данных карты.
+                Платеж будет произведен сразу после подтверждения.
+            </div>
+            <form method="post" action="">
+                {% csrf_token %}
+                <button class="btn-pay" type="submit" style="width: 100%;">
+                    Перейти к {{ provider_name }} →
+                </button>
+            </form>
+            {% else %}
+            <div class="pay-info">
+                <strong>ℹ️ Тестовый режим</strong><br>
+                Это эмуляция платёжной формы для тестирования.
+                В реальном режиме вы будете перенаправлены на {{ provider_name }}.
+            </div>
+            <form method="post" action="{% url 'payment-sandbox-confirm' order.id %}">
+                {% csrf_token %}
+                <div class="card-fields">
+                    <label>
+                        Номер карты
+                        <input type="text" name="card_number" placeholder="0000 0000 0000 0000" autocomplete="cc-number">
+                    </label>
+                    <div class="card-row">
+                        <label>
+                            Срок действия
+                            <input type="text" name="expiry" placeholder="MM/ГГ" autocomplete="cc-exp">
+                        </label>
+                        <label>
+                            CVC
+                            <input type="text" name="cvc" placeholder="123" autocomplete="cc-csc">
+                        </label>
+                    </div>
+                    <label>
+                        Имя владельца
+                        <input type="text" name="card_holder" placeholder="Ivan Ivanov" autocomplete="cc-name">
+                    </label>
+                </div>
+                <div class="pay-actions">
+                    <button class="btn-pay" type="submit" name="outcome" value="pay">✓ Оплатить картой</button>
+                    <button class="btn-fail" type="submit" name="outcome" value="fail">✗ Отклонить</button>
+                </div>
+            </form>
+            <p class="pay-note">
+                Это эмуляция платёжной формы банка для тестирования.
+            </p>
+            {% endif %}
+        {% else %}
+        <p class="pay-note">Заказ уже обработан и не может быть оплачен повторно.</p>
+        <p style="text-align:center;"><a href="{% url 'payment-return' order.id %}">К результату →</a></p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

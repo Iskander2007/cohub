@@ -2,6 +2,7 @@
 import logging
 
 from django.db import connection, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from .models import BackgroundTask
@@ -9,6 +10,21 @@ from .models import BackgroundTask
 logger = logging.getLogger(__name__)
 
 TASK_REGISTRY = {}
+
+# Задача, провисевшая в статусе 'running' дольше этого времени, считается
+# брошенной (воркер умер на полпути) и возвращается в очередь.
+STALE_RUNNING_TIMEOUT = 600
+
+
+def requeue_stale_tasks(timeout_seconds=STALE_RUNNING_TIMEOUT):
+    """Вернуть в очередь задачи, зависшие в 'running'.
+
+    Если воркер был убит (деплой/OOM) между захватом задачи и её завершением,
+    строка осталась бы в 'running' навсегда. Возвращаем такие задачи в pending,
+    чтобы они переобработались. Возвращает число восстановленных задач.
+    """
+    cutoff = timezone.now() - timezone.timedelta(seconds=timeout_seconds)
+    return BackgroundTask.objects.filter(status='running', started_at__lt=cutoff).update(status='pending')
 
 
 def register_task(name):
@@ -38,10 +54,17 @@ def _claim_next_task():
         if task is None:
             return None
 
-        task.status = 'running'
-        task.attempts += 1
-        task.started_at = timezone.now()
-        task.save(update_fields=['status', 'attempts', 'started_at'])
+        # Атомарный захват: переводим в 'running' только если задача всё ещё
+        # 'pending'. На бэкендах без SELECT FOR UPDATE (например, SQLite) это
+        # не даёт двум воркерам выполнить одну и ту же задачу дважды.
+        claimed = BackgroundTask.objects.filter(id=task.id, status='pending').update(
+            status='running',
+            attempts=F('attempts') + 1,
+            started_at=timezone.now(),
+        )
+        if not claimed:
+            return None
+        task.refresh_from_db()
         return task
 
 
@@ -66,8 +89,13 @@ def run_pending_tasks(limit=10):
             # Если попытки не исчерпаны — вернём в очередь для повтора.
             task.status = 'pending' if task.attempts < task.max_attempts else 'failed'
 
-        task.finished_at = timezone.now()
-        task.save(update_fields=['status', 'result', 'finished_at'])
+        update_fields = ['status', 'result']
+        # finished_at проставляем только для терминальных статусов; задача,
+        # возвращённая в 'pending' для повтора, ещё не завершена.
+        if task.status in ('done', 'failed'):
+            task.finished_at = timezone.now()
+            update_fields.append('finished_at')
+        task.save(update_fields=update_fields)
         processed += 1
 
     return processed
