@@ -1,0 +1,26 @@
+# Не тащим в образ лишнее и секреты.
+.git
+.github
+.venv
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+staticfiles/
+media/
+logs/
+db.sqlite3
+db.sqlite3-*
+backups/
+.env
+.env.*
+!.env.example
+loadtest_report.html
+loadtest_stats_*.csv
+monitoring/
+*.md
+.idea/
+.vscode/

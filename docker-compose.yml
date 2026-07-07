@@ -1,7 +1,87 @@
-version: "3.8"
+# Локальный запуск ВСЕГО приложения:  docker compose up --build
+#
+#   web    — Django (gunicorn) на http://localhost:8000  (миграции + collectstatic на старте)
+#   db     — PostgreSQL 16 (как на проде)
+#   redis  — Redis 7 (кэш + брокер Celery)
+#   worker — Celery-воркер (фоновые задачи: напоминания по долгам)
+#
+# Проверка health/рестарта (задача #16):
+#   curl http://localhost:8000/health/   → 200 + {"status":"ok","checks":{"database":"ok","cache":"ok"}}
+#   docker compose restart web && curl http://localhost:8000/health/
+#
+# .env НЕ используется этим стеком (значения заданы ниже явно) и не коммитится.
 
 services:
-  app:
+  db:
+    image: postgres:16
+    container_name: cohub-db
+    environment:
+      POSTGRES_USER: cohub
+      POSTGRES_PASSWORD: cohub
+      POSTGRES_DB: cohub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cohub"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: cohub-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  web:
     build: .
+    container_name: cohub-web
+    command: >-
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn cohub_settings.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    environment:
+      DJANGO_SECRET_KEY: docker-local-dev-secret-change-me
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,0.0.0.0,web
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      DATABASE_URL: postgres://cohub:cohub@db:5432/cohub
+      REDIS_URL: redis://redis:6379/0
     ports:
-      - "80:80"
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Подтверждает работоспособность после старта и `docker compose restart web`.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  worker:
+    build: .
+    container_name: cohub-worker
+    command: celery -A cohub_settings worker --loglevel=info --concurrency=2
+    environment:
+      DJANGO_SECRET_KEY: docker-local-dev-secret-change-me
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,web
+      DATABASE_URL: postgres://cohub:cohub@db:5432/cohub
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  pgdata:

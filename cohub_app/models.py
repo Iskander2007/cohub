@@ -71,6 +71,12 @@ class Task(models.Model):
         verbose_name = "Задача"
         verbose_name_plural = "Задачи"
         ordering = ['-created_at']
+        indexes = [
+            # Список задач комнаты с фильтром по статусу.
+            models.Index(fields=['room', 'status'], name='task_room_status_idx'),
+            # Задачи, назначенные конкретному пользователю.
+            models.Index(fields=['assigned_to', 'status'], name='task_assignee_status_idx'),
+        ]
     
     def __str__(self):
         return self.title
@@ -144,6 +150,10 @@ class Expense(models.Model):
         verbose_name = "Расход"
         verbose_name_plural = "Расходы"
         ordering = ['-date']
+        indexes = [
+            # Лента расходов комнаты, отсортированная по дате.
+            models.Index(fields=['room', '-date'], name='expense_room_date_idx'),
+        ]
     
     def __str__(self):
         return f"{self.description} ({self.amount}₸)"
@@ -278,6 +288,10 @@ class ChatMessage(models.Model):
         verbose_name = "Сообщение чата"
         verbose_name_plural = "Сообщения чата"
         ordering = ['-created_at']
+        indexes = [
+            # История сообщений комнаты по времени (пагинация чата).
+            models.Index(fields=['room', '-created_at'], name='chat_room_created_idx'),
+        ]
 
     def __str__(self):
         return f"{self.author.username}: {self.text[:30]}"
@@ -285,13 +299,29 @@ class ChatMessage(models.Model):
 
 class UserProfile(models.Model):
     """Дополнительная информация о пользователе (аватар, био и личный статус)"""
+
+    # RBAC: роль пользователя на уровне всего сервиса.
+    ROLE_USER = 'user'
+    ROLE_ADMIN = 'admin'
+    ROLE_CHOICES = [
+        (ROLE_USER, 'Пользователь'),
+        (ROLE_ADMIN, 'Администратор'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     bio = models.TextField(blank=True, null=True, verbose_name="Биография")
+    role = models.CharField(
+        max_length=10,
+        choices=ROLE_CHOICES,
+        default=ROLE_USER,
+        verbose_name="Роль (RBAC)",
+        help_text="Глобальная роль пользователя: user или admin.",
+    )
     mood_key = models.CharField(max_length=20, default='calm', blank=True, verbose_name="Текущее настроение")
     mood_note = models.CharField(max_length=120, blank=True, verbose_name="Короткая заметка к настроению")
     mood_updated_at = models.DateTimeField(blank=True, null=True, verbose_name="Когда обновили настроение")
-    
+
     def __str__(self):
         return f"Профиль {self.user.username}"
 
@@ -385,14 +415,243 @@ class Subscription(models.Model):
         self.save()
 
 
+class BackgroundTask(models.Model):
+    """Задача в очереди. Хранится в БД; выполняется воркером (run_worker)."""
+
+    STATUS_CHOICES = [
+        ('pending', 'В очереди'),
+        ('running', 'Выполняется'),
+        ('done', 'Выполнена'),
+        ('failed', 'Ошибка'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task_name = models.CharField(max_length=100, verbose_name="Имя задачи")
+    payload = models.JSONField(default=dict, blank=True, verbose_name="Параметры")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Статус")
+    attempts = models.PositiveIntegerField(default=0, verbose_name="Сделано попыток")
+    max_attempts = models.PositiveIntegerField(default=3, verbose_name="Максимум попыток")
+    result = models.TextField(blank=True, verbose_name="Результат или текст ошибки")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создана")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="Начата")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершена")
+
+    class Meta:
+        verbose_name = "Фоновая задача"
+        verbose_name_plural = "Фоновые задачи (очередь)"
+        ordering = ['created_at']
+        indexes = [
+            # Воркер выбирает старейшие pending-задачи — индекс ускоряет это.
+            models.Index(fields=['status', 'created_at'], name='bgtask_status_created_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.task_name} [{self.status}]"
+
+
+class Order(models.Model):
+    """Заказ на разовую оплату (PAY-004).
+
+    Модель жизненного цикла платежа с явным автоматом состояний. Один заказ —
+    одна попытка оплаты PRO-подписки через внешний провайдер (Bereke / PayPal).
+
+    Допустимые переходы описаны в ALLOWED_TRANSITIONS и проверяются методом
+    transition_to(): нельзя, например, из 'paid' уйти в 'pending'. Каждый переход
+    фиксируется в PaymentEvent — получается полный аудит платежа.
+    """
+
+    # --- Состояния жизненного цикла ---
+    STATUS_CREATED = 'created'        # заказ создан, оплата ещё не начата
+    STATUS_PENDING = 'pending'        # пользователь ушёл на платёжную форму
+    STATUS_PAID = 'paid'              # оплата подтверждена провайдером
+    STATUS_FAILED = 'failed'          # оплата отклонена/ошибка
+    STATUS_CANCELLED = 'cancelled'    # пользователь отменил оплату
+    STATUS_EXPIRED = 'expired'        # истёк срок оплаты
+    STATUS_REFUNDED = 'refunded'      # возврат после успешной оплаты
+
+    STATUS_CHOICES = [
+        (STATUS_CREATED, 'Создан'),
+        (STATUS_PENDING, 'Ожидает оплаты'),
+        (STATUS_PAID, 'Оплачен'),
+        (STATUS_FAILED, 'Ошибка оплаты'),
+        (STATUS_CANCELLED, 'Отменён'),
+        (STATUS_EXPIRED, 'Истёк'),
+        (STATUS_REFUNDED, 'Возврат'),
+    ]
+
+    # Автомат состояний: из какого статуса в какие можно перейти.
+    ALLOWED_TRANSITIONS = {
+        STATUS_CREATED: {STATUS_PENDING, STATUS_CANCELLED, STATUS_EXPIRED, STATUS_FAILED},
+        STATUS_PENDING: {STATUS_PAID, STATUS_FAILED, STATUS_CANCELLED, STATUS_EXPIRED},
+        STATUS_FAILED: {STATUS_PENDING},          # можно повторить попытку
+        STATUS_PAID: {STATUS_REFUNDED},
+        STATUS_CANCELLED: set(),                  # терминальное состояние
+        STATUS_EXPIRED: set(),                    # терминальное состояние
+        STATUS_REFUNDED: set(),                   # терминальное состояние
+    }
+    # Статусы, после которых заказ уже нельзя оплатить.
+    TERMINAL_STATUSES = {STATUS_PAID, STATUS_CANCELLED, STATUS_EXPIRED, STATUS_REFUNDED}
+
+    PROVIDER_BEREKE = 'bereke'
+    PROVIDER_PAYPAL = 'paypal'
+    PROVIDER_CHOICES = [
+        (PROVIDER_BEREKE, 'Bereke Bank'),
+        (PROVIDER_PAYPAL, 'PayPal'),
+    ]
+
+    PURPOSE_SUBSCRIPTION = 'subscription'
+    PURPOSE_CHOICES = [
+        (PURPOSE_SUBSCRIPTION, 'PRO-подписка'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Человекочитаемый номер заказа (ORD-XXXXXXXX) — удобно для платёжных форм и поддержки.
+    number = models.CharField(max_length=20, unique=True, editable=False, verbose_name="Номер заказа")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders', verbose_name="Пользователь")
+
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_SUBSCRIPTION, verbose_name="Назначение")
+    description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
+    subscription_months = models.PositiveIntegerField(default=1, verbose_name="Месяцев подписки")
+
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Сумма")
+    currency = models.CharField(max_length=3, default='KZT', verbose_name="Валюта")
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default=PROVIDER_BEREKE, verbose_name="Провайдер")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_CREATED, verbose_name="Статус")
+
+    # PAY-005: ключ идемпотентности. Уникален — две одинаковые отправки checkout
+    # не создадут два заказа (повторная отправка вернёт тот же заказ).
+    idempotency_key = models.CharField(max_length=64, unique=True, verbose_name="Ключ идемпотентности")
+
+    # Идентификаторы на стороне провайдера (invoice id, capture id и т.п.).
+    provider_order_id = models.CharField(max_length=128, blank=True, verbose_name="ID заказа у провайдера")
+    provider_payment_id = models.CharField(max_length=128, blank=True, verbose_name="ID платежа у провайдера")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Оплачен")
+
+    class Meta:
+        verbose_name = "Заказ (платёж)"
+        verbose_name_plural = "Заказы (платежи)"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status'], name='order_user_status_idx'),
+            models.Index(fields=['provider', 'provider_order_id'], name='order_provider_ref_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.number} [{self.get_status_display()}] {self.amount}{self.currency}"
+
+    def save(self, *args, **kwargs):
+        if not self.number:
+            self.number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def _generate_number():
+        while True:
+            number = 'ORD-' + uuid.uuid4().hex[:8].upper()
+            if not Order.objects.filter(number=number).exists():
+                return number
+
+    @property
+    def is_paid(self):
+        return self.status == self.STATUS_PAID
+
+    @property
+    def is_open(self):
+        """Заказ ещё можно оплатить (не в терминальном статусе)."""
+        return self.status not in self.TERMINAL_STATUSES
+
+    def can_transition_to(self, new_status):
+        return new_status in self.ALLOWED_TRANSITIONS.get(self.status, set())
+
+    def transition_to(self, new_status, message='', payload=None, event_type='transition', save=True):
+        """Перевести заказ в новый статус по правилам автомата.
+
+        Возвращает True, если переход выполнен; False — если он недопустим или
+        статус уже совпадает (идемпотентность повторных колбэков). Любая попытка
+        перехода логируется в PaymentEvent.
+        """
+        if new_status == self.status:
+            # Повторный колбэк с тем же статусом — не ошибка, просто фиксируем.
+            PaymentEvent.objects.create(
+                order=self, event_type='duplicate', from_status=self.status,
+                to_status=new_status, message=message or 'Повторное событие, статус не изменился',
+                payload=payload or {},
+            )
+            return False
+
+        if not self.can_transition_to(new_status):
+            PaymentEvent.objects.create(
+                order=self, event_type='rejected', from_status=self.status,
+                to_status=new_status,
+                message=message or f'Недопустимый переход {self.status} → {new_status}',
+                payload=payload or {},
+            )
+            return False
+
+        from_status = self.status
+        self.status = new_status
+        update_fields = ['status', 'updated_at']
+        if new_status == self.STATUS_PAID and not self.paid_at:
+            self.paid_at = timezone.now()
+            update_fields.append('paid_at')
+
+        if save:
+            self.save(update_fields=update_fields)
+
+        PaymentEvent.objects.create(
+            order=self, event_type=event_type, from_status=from_status,
+            to_status=new_status, message=message, payload=payload or {},
+        )
+        return True
+
+
+class PaymentEvent(models.Model):
+    """Событие по заказу: переход статуса или входящий колбэк провайдера.
+
+    Полный аудит платежа — кто, когда и с какими данными менял состояние заказа.
+    Сюда же складываем сырой payload провайдера (полезно при отладке через ngrok).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='events', verbose_name="Заказ")
+    event_type = models.CharField(max_length=30, verbose_name="Тип события")
+    from_status = models.CharField(max_length=20, blank=True, verbose_name="Из статуса")
+    to_status = models.CharField(max_length=20, blank=True, verbose_name="В статус")
+    message = models.CharField(max_length=255, blank=True, verbose_name="Сообщение")
+    payload = models.JSONField(default=dict, blank=True, verbose_name="Данные провайдера")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Время")
+
+    class Meta:
+        verbose_name = "Событие платежа"
+        verbose_name_plural = "События платежей"
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['order', 'created_at'], name='payevent_order_time_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.order.number}: {self.event_type} {self.from_status}→{self.to_status}"
+
+
 # Signal to create profile and subscription automatically when a User is created
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
+    # raw=True означает загрузку фикстуры/бэкапа (loaddata): объекты приходят
+    # «как есть», и профиль/подписка обычно уже содержатся в дампе. В этом случае
+    # не создаём их сами — иначе вставка соответствующих строк дампа упадёт с
+    # IntegrityError на уникальном user_id (OneToOne).
+    if kwargs.get('raw'):
+        return
     if created:
-        UserProfile.objects.create(user=instance)
-        # Создаем подписку с пробным периодом
-        subscription = Subscription.objects.create(user=instance)
-        subscription.start_trial(trial_days=7)
+        # get_or_create — на случай, если строка уже существует (идемпотентность).
+        UserProfile.objects.get_or_create(user=instance)
+        subscription, sub_created = Subscription.objects.get_or_create(user=instance)
+        if sub_created:
+            # Пробный период запускаем только для действительно новой подписки.
+            subscription.start_trial(trial_days=7)

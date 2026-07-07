@@ -1,11 +1,14 @@
 services:
   - type: web
     name: cohub-web
+    healthCheckPath: /health/
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
     startCommand: gunicorn cohub_settings.wsgi:application --bind 0.0.0.0:$PORT
-    autoDeploy: true
+    # Деплой запускается из GitHub Actions (deploy.yml) только после зелёного CI,
+    # поэтому собственный авто-деплой Render отключён, чтобы не было двойного деплоя.
+    autoDeploy: false
     envVars:
       - key: DJANGO_DEBUG
         value: "False"
@@ -15,6 +18,13 @@ services:
         value: https://*.onrender.com
       - key: DATABASE_URL
         sync: false
+      # Redis: кэш (RedisCache) + брокер Celery. Подключается автоматически из
+      # сервиса cohub-redis ниже.
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cohub-redis
+          property: connectionString
       - key: DJANGO_SECURE_SSL_REDIRECT
         value: "True"
       - key: DJANGO_SESSION_COOKIE_SECURE
@@ -30,10 +40,48 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
 
+  # Celery-воркер: разбирает фоновые задачи (напоминания по долгам) из брокера Redis.
+  # В логах воркера видно "Task cohub_app.tasks.send_loan_reminder_task ... succeeded".
+  # ВАЖНО: тот же DATABASE_URL и REDIS_URL, что и у web-сервиса.
+  - type: worker
+    name: cohub-worker
+    env: python
+    plan: free
+    autoDeploy: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A cohub_settings worker --loglevel=info --concurrency=2
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cohub-redis
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        sync: false
+
   - type: cron
     name: cohub-backup-daily
     env: python
     plan: free
     schedule: "0 2 * * *"
     buildCommand: pip install -r requirements.txt
+    # ВАЖНО: тот же DATABASE_URL, что и у web-сервиса — иначе backup_data пойдёт по
+    # пустой локальной SQLite и упадёт (no such table) вместо бэкапа прод-Postgres.
+    # ПРИМЕЧАНИЕ: ФС cron-контейнера эфемерна — дамп в ./backups исчезает после
+    # запуска. Для долговременного хранения добавьте выгрузку в облако
+    # (management-команда backup_uploader / S3) в startCommand.
     startCommand: python manage.py backup_data --compress
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DJANGO_SECRET_KEY
+        sync: false
+
+  # Redis (Render Key Value): общий кэш и брокер Celery.
+  - type: redis
+    name: cohub-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []   # доступ только из внутренней сети Render

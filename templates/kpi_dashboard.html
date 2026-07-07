@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}COHUB — KPI Dashboard{% endblock %}
+
+{% block content %}
+<main class="main kpi-main">
+    <header class="kpi-header">
+        <h1>📊 KPI Dashboard</h1>
+        <p class="kpi-sub">Ключевые продуктовые метрики COHUB за последние {{ kpi.period_days }} дней.
+            Считаются из реальных данных (подписки и заказы). Динамика событий — в PostHog.</p>
+    </header>
+
+    <div class="row row-cards row-deck kpi-cards">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card">
+                <div class="card-title">Conversion rate</div>
+                <div class="kpi-value">{{ kpi.conversion_rate }}%</div>
+                <div class="kpi-note">{{ kpi.pro_users }} PRO из {{ kpi.total_users }} пользователей</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card">
+                <div class="card-title">MRR</div>
+                <div class="kpi-value">{{ kpi.mrr }} <span class="kpi-cur">{{ kpi.currency }}</span></div>
+                <div class="kpi-note">Monthly Recurring Revenue</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card">
+                <div class="card-title">Churn rate</div>
+                <div class="kpi-value">{{ kpi.churn_rate }}%</div>
+                <div class="kpi-note">{{ kpi.cancelled_users }} отменили / истекли</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card kpi-card">
+                <div class="card-title">ARPU</div>
+                <div class="kpi-value">{{ kpi.arpu }} <span class="kpi-cur">{{ kpi.currency }}</span></div>
+                <div class="kpi-note">Средний доход на PRO-пользователя</div>
+            </div>
+        </div>
+    </div>
+
+    <section class="card kpi-details">
+        <div class="card-title">Детали</div>
+        <table class="kpi-table">
+            <tr><td>Всего пользователей</td><td>{{ kpi.total_users }}</td></tr>
+            <tr><td>PRO (активная подписка)</td><td>{{ kpi.pro_users }}</td></tr>
+            <tr><td>На пробном периоде</td><td>{{ kpi.trial_users }}</td></tr>
+            <tr><td>Отменили / истекли</td><td>{{ kpi.cancelled_users }}</td></tr>
+            <tr><td>Оплат за {{ kpi.period_days }} дней</td><td>{{ kpi.paid_orders_30d }}</td></tr>
+        </table>
+    </section>
+
+    <p class="kpi-formulas">
+        Формулы: <b>conversion</b> = PRO / все пользователи; <b>MRR</b> = сумма оплат за 30 дней,
+        нормированная к месяцу; <b>churn</b> = отменившие / (PRO + отменившие); <b>ARPU</b> = MRR / PRO.
+        Подробнее — в <code>ANALYTICS.md</code>.
+    </p>
+</main>
+{% endblock %}

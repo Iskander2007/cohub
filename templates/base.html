@@ -6,15 +6,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}COHUB - Управление совместной жизнью{% endblock %}</title>
     {% load static %}
+    {% comment %}Tabler core (вендорено локально, офлайн) — грузится ДО style.css, чтобы
+       наш стеклянный скин классов .card/.btn побеждал, а Tabler давал сетку/утилиты/
+       новые компоненты для переверстанных страниц.{% endcomment %}
+    <link rel="stylesheet" href="{% static 'vendor/tabler/tabler.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% comment %}Редизайн-оверлей: дизайн-токены и стилизация компонентов поверх style.css.{% endcomment %}
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    {% comment %}Google Analytics 4 (gtag.js) — no-op без GOOGLE_ANALYTICS_ID.{% endcomment %}
+    {% include 'partials/google_analytics.html' %}
+    {% comment %}PostHog-аналитика: identify + автозахват $pageview (no-op без ключа).{% endcomment %}
+    {% include 'partials/posthog.html' %}
 </head>
 
-<body>
+<body class="{% block body_class %}{% endblock %}">
     {% if user.is_authenticated %}
     <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
         <span class="theme-toggle__dot" aria-hidden="true"></span>
         <span class="theme-toggle__label">Тёмный режим</span>
     </button>
+    {% endif %}
+
+    {% comment %}Flash-сообщения Django (раньше нигде не рендерились — теперь видны).{% endcomment %}
+    {% if messages %}
+    <div class="cohub-flash-stack" role="status" aria-live="polite">
+        {% for message in messages %}
+        <div class="cohub-flash cohub-flash--{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+    </div>
     {% endif %}
 
     <div class="wrapper">

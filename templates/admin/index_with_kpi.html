@@ -1,0 +1,35 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+{% if kpi %}
+<div class="module" style="margin-bottom:20px; padding:16px 16px 8px;">
+    <h2 style="margin:0 0 4px;">📊 KPI за {{ kpi.period_days }} дней
+        <a href="{% url 'admin:kpi' %}" style="font-size:12px; font-weight:400; margin-left:10px;">подробнее →</a>
+    </h2>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:14px; margin:14px 0;">
+        <div style="border:1px solid var(--hairline-color, #444); border-radius:8px; padding:12px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">Conversion</div>
+            <div style="font-size:26px; font-weight:700; margin:6px 0;">{{ kpi.conversion_rate }}%</div>
+            <div style="font-size:11px; opacity:.7;">{{ kpi.pro_users }} PRO / {{ kpi.total_users }}</div>
+        </div>
+        <div style="border:1px solid var(--hairline-color, #444); border-radius:8px; padding:12px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">MRR</div>
+            <div style="font-size:26px; font-weight:700; margin:6px 0;">{{ kpi.mrr }} <span style="font-size:13px; opacity:.7;">{{ kpi.currency }}</span></div>
+            <div style="font-size:11px; opacity:.7;">Monthly Recurring Revenue</div>
+        </div>
+        <div style="border:1px solid var(--hairline-color, #444); border-radius:8px; padding:12px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">Churn</div>
+            <div style="font-size:26px; font-weight:700; margin:6px 0;">{{ kpi.churn_rate }}%</div>
+            <div style="font-size:11px; opacity:.7;">{{ kpi.cancelled_users }} ушли</div>
+        </div>
+        <div style="border:1px solid var(--hairline-color, #444); border-radius:8px; padding:12px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">ARPU</div>
+            <div style="font-size:26px; font-weight:700; margin:6px 0;">{{ kpi.arpu }} <span style="font-size:13px; opacity:.7;">{{ kpi.currency }}</span></div>
+            <div style="font-size:11px; opacity:.7;">Доход на PRO</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from django.core.management import BaseCommand, call_command
 from django.conf import settings
@@ -46,9 +47,11 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Scheduler запущен'))
         
         try:
-            # Держать планировщик запущенным
+            # Держать процесс живым. Сами задачи выполняет фоновый поток
+            # APScheduler, поэтому главный поток должен просто спать, а не крутить
+            # busy-loop (`while True: pass` грузил бы ядро CPU на 100%).
             while True:
-                pass
+                time.sleep(60)
         except KeyboardInterrupt:
             self.stdout.write(self.style.WARNING('\nОстановка scheduler...'))
             scheduler.shutdown()

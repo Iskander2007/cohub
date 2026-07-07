@@ -2,24 +2,94 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, "feature/**", "hotfix/**" ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cohub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_SECRET_KEY: test-secret-key-not-for-production
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      # dj-database-url подхватит это и тесты пойдут на PostgreSQL, как на проде.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/cohub_test
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Check migrations
+          pip install -r requirements-dev.txt
+
+      - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
-      - name: Run static collect
+
+      - name: Apply migrations
+        run: python manage.py migrate --noinput
+
+      - name: Collect static files
         run: python manage.py collectstatic --noinput
+
+      - name: Run tests with coverage (pytest, fail under 70%)
+        run: pytest -v
+        env:
+          DJANGO_TESTING: "true"
+
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+          if-no-files-found: ignore
+
+      - name: Security deploy checks (Django)
+        run: python manage.py check --deploy
+        env:
+          DJANGO_DEBUG: "false"
+          DJANGO_SECURE_SSL_REDIRECT: "true"
+          DJANGO_SESSION_COOKIE_SECURE: "true"
+          DJANGO_CSRF_COOKIE_SECURE: "true"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+
+      - name: Audit secrets and config
+        run: python manage.py check_secrets
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # полная история нужна trufflehog для сканирования коммитов
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: HEAD
+          extra_args: --results=verified,unknown

@@ -1,0 +1,17 @@
+[run]
+source = cohub_app
+branch = False
+omit =
+    */migrations/*
+    */tests.py
+    */__init__.py
+    cohub_app/apps.py
+
+[report]
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:

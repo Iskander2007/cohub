@@ -1,0 +1,13 @@
+# Dev / тестовые зависимости (НЕ ставятся в продакшене).
+# Установка:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Нагрузочное тестирование (locust_loadtest.py, 100 пользователей, HTML-отчёт).
+locust==2.44.4
+
+# Тесты и покрытие (задача чек-листа: `pytest -v`, покрытие ≥70%).
+# Запуск:  pytest -v            (конфиг в pytest.ini / .coveragerc)
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+coverage==7.6.9

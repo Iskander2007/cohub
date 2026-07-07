@@ -11,7 +11,11 @@
 <main class="main register-main">
     <section class="register-panel card">
         <div class="register-inner">
-            <h2 class="register-title">ВОЙТИ</h2>
+            <div class="auth-head">
+                <div class="auth-logo">CO</div>
+                <h2 class="register-title">Вход в аккаунт</h2>
+                <p class="register-subtitle">С возвращением! Войдите, чтобы продолжить.</p>
+            </div>
             {% if error %}
             <div class="error-message is-visible">{{ error }}</div>
             {% endif %}
@@ -29,11 +33,62 @@
                     <input id="login-password" type="password" name="password" required placeholder="Введите пароль"
                         title="Введите пароль">
                 </div>
-                <button type="submit" class="btn register-btn">ВОЙТИ</button>
+                {% if recaptcha_enabled %}
+                    {% if recaptcha_version == 'v3' %}
+                    {# reCAPTCHA v3: невидимая, токен подставляет JS перед отправкой формы. #}
+                    <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response">
+                    {% else %}
+                    <div class="input-group">
+                        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="input-group">
+                    <label for="login-captcha">{{ captcha_question }}</label>
+                    <input id="login-captcha" type="text" name="captcha" inputmode="numeric" required
+                        autocomplete="off" placeholder="Ответ на вопрос" title="Защита от ботов">
+                </div>
+                {% endif %}
+                <button type="submit" class="btn register-btn">Войти</button>
+                {% if google_oauth_enabled %}
+                <div class="auth-divider"><span>или</span></div>
+                <a href="{% url 'google-login' %}" class="btn btn-google">
+                    <span class="btn-google__g">G</span> Войти через Google
+                </a>
+                {% endif %}
                 <p class="login-link">Нет аккаунта? <a href="{% url 'register' %}">Зарегистрируйтесь</a></p>
             </form>
         </div>
     </section>
 </main>
 
+{% endblock %}
+
+{% block extra_js %}
+{% if recaptcha_enabled %}
+    {% if recaptcha_version == 'v3' %}
+    <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_site_key }}"></script>
+    <script>
+        // reCAPTCHA v3: перехватываем отправку формы, получаем токен в фоне и
+        // кладём его в скрытое поле, затем отправляем форму.
+        (function () {
+            var form = document.querySelector('.register-form');
+            if (!form) return;
+            form.addEventListener('submit', function (e) {
+                var field = document.getElementById('g-recaptcha-response');
+                if (field && field.value) return; // токен уже получен
+                e.preventDefault();
+                grecaptcha.ready(function () {
+                    grecaptcha.execute('{{ recaptcha_site_key }}', { action: 'login' }).then(function (token) {
+                        field.value = token;
+                        form.submit();
+                    });
+                });
+            });
+        })();
+    </script>
+    {% else %}
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    {% endif %}
+{% endif %}
 {% endblock %}

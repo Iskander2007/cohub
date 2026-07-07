@@ -12,9 +12,11 @@ from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, TestCase, override_settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
-from .models import Room, RoomMember, Expense, ExpenseShare, DebtSettlement, Loan, LoanPayment, Task, ChatMessage, TaskReassignmentRequest
+from .models import Room, RoomMember, Expense, ExpenseShare, DebtSettlement, Loan, LoanPayment, Task, ChatMessage, TaskReassignmentRequest, BackgroundTask, Subscription, UserProfile
 from .views import (
     clear_failed_login_attempts,
     is_login_rate_limited,
@@ -23,6 +25,10 @@ from .views import (
 )
 
 
+# Тесты входа/регистрации проверяют встроенную арифметическую CAPTCHA, поэтому
+# принудительно отключаем Google reCAPTCHA — иначе ключи из локального .env
+# разработчика «протекают» в тесты и ломают их (код требует токен Google).
+@override_settings(RECAPTCHA_SITE_KEY='', RECAPTCHA_SECRET_KEY='')
 class CohubApiTests(APITestCase):
     def setUp(self):
         cache.clear()
@@ -121,7 +127,7 @@ class CohubApiTests(APITestCase):
         self.client.force_authenticate(user=self.member)
         payload = {
             'room': str(self.room.id),
-            'description': 'Интернет',
+            'description': 'АВПВЫВЫПИВЫМАВЫ',
             'amount': '3000.00',
             'category': 'Коммуналка',
             'shared_with_room': True,
@@ -135,6 +141,37 @@ class CohubApiTests(APITestCase):
         shares = ExpenseShare.objects.filter(expense=expense)
         self.assertTrue(shares.exists())
         self.assertTrue(all(share.is_settled for share in shares))
+
+    def test_shared_expense_shares_sum_to_total_with_remainder(self):
+        # Сумма, не делящаяся нацело: доли всё равно должны давать ровно total.
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.post('/api/expenses/', {
+            'room': str(self.room.id),
+            'description': 'Неделимый расход',
+            'amount': '10.01',
+            'category': 'misc',
+            'shared_with_room': True,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        expense = Expense.objects.get(id=response.data['id'])
+        shares = list(ExpenseShare.objects.filter(expense=expense))
+        self.assertEqual(len(shares), 2)
+        self.assertEqual(float(sum(share.amount for share in shares)), 10.01)
+
+    def test_task_status_cannot_be_completed_via_direct_patch(self):
+        # Прямой PATCH status='completed' не должен закрывать задачу в обход
+        # проверки прав (status — read-only, завершение только через action).
+        task = Task.objects.create(
+            room=self.room, title='Помыть пол', status='pending', priority='medium',
+            created_by=self.owner, assigned_to=self.member,
+        )
+
+        self.client.force_authenticate(user=self.member)
+        self.client.patch(f'/api/tasks/{task.id}/', {'status': 'completed'}, format='json')
+
+        task.refresh_from_db()
+        self.assertEqual(task.status, 'pending')
 
     def test_chat_message_cannot_be_blank(self):
         self.client.force_authenticate(user=self.member)
@@ -634,9 +671,14 @@ class CohubApiTests(APITestCase):
         self.assertIn('Слишком много неудачных попыток входа', throttled_response.json()['error'])
 
     def test_login_view_redirects_to_dashboard_on_success(self):
+        # GET генерирует CAPTCHA и кладёт правильный ответ в сессию.
+        self.client.get('/account/login/')
+        captcha_answer = self.client.session['captcha_answer']
+
         response = self.client.post('/account/login/', {
             'email': 'owner@example.com',
             'password': 'password123',
+            'captcha': captcha_answer,
         })
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
@@ -932,3 +974,767 @@ class CohubApiTests(APITestCase):
             backup_content = backup_files[0].read_text(encoding='utf-8')
             self.assertIn('"model": "auth.user"', backup_content)
             self.assertIn('"model": "cohub_app.room"', backup_content)
+
+
+@override_settings(RECAPTCHA_SITE_KEY='', RECAPTCHA_SECRET_KEY='')
+class SecurityFeaturesTests(APITestCase):
+    """Тесты добавленных фич безопасности: CAPTCHA, RBAC, open redirect, заголовки."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='user@example.com', password='password123')
+        self.admin = User.objects.create_user(
+            username='admin@example.com', password='password123', is_staff=True,
+        )
+        self.room = Room.objects.create(name='Sec Room', code='SEC123', owner=self.user)
+        RoomMember.objects.create(room=self.room, user=self.user, is_admin=True)
+
+    def tearDown(self):
+        cache.clear()
+
+    # --- CAPTCHA (A07) ---
+    def test_login_rejected_with_wrong_captcha(self):
+        self.client.get('/account/login/')  # генерируем CAPTCHA в сессии
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': '-999',  # заведомо неверный ответ
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)  # форма с ошибкой, не редирект
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_login_succeeds_with_correct_captcha(self):
+        self.client.get('/account/login/')
+        answer = self.client.session['captcha_answer']
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': answer,
+        })
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+
+    # --- A01: open redirect ---
+    def test_login_ignores_external_next_url(self):
+        self.client.get('/account/login/')
+        answer = self.client.session['captcha_answer']
+        response = self.client.post('/account/login/', {
+            'email': 'user@example.com',
+            'password': 'password123',
+            'captcha': answer,
+            'next': 'https://evil.example.com/phish',
+        })
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(response['Location'], '/dashboard/')  # внешний адрес отброшен
+
+    # --- RBAC ---
+    def test_global_metrics_forbidden_for_regular_user(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_global_metrics_allowed_for_admin(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_role_field_grants_admin_access(self):
+        # Роль через профиль (без is_staff) тоже даёт доступ администратора.
+        self.user.profile.role = 'admin'
+        self.user.profile.save()
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/teacher-metrics/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_non_owner_member_cannot_delete_room(self):
+        other = User.objects.create_user(username='other@example.com', password='password123')
+        RoomMember.objects.create(room=self.room, user=other, is_admin=False)
+        self.client.force_authenticate(user=other)
+        response = self.client.delete(f'/api/rooms/{self.room.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Room.objects.filter(id=self.room.id).exists())
+
+    # --- Security headers (A05) ---
+    def test_security_headers_present(self):
+        response = self.client.get('/account/login/')
+        self.assertIn('Content-Security-Policy', response)
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        self.assertIn('camera=()', response['Permissions-Policy'])
+
+    # --- Аудит секретов ---
+    @override_settings(SECRET_KEY='proper-non-default-secret-key-for-tests-0123456789')
+    def test_check_secrets_passes_with_good_config(self):
+        # С нормальным SECRET_KEY и DEBUG=True команда завершается без проблем.
+        call_command('check_secrets')
+
+    def test_check_secrets_fails_on_default_secret_key(self):
+        # Небезопасный ключ по умолчанию должен приводить к ненулевому коду выхода.
+        with override_settings(SECRET_KEY='django-insecure-your-secret-key-change-in-production'):
+            with self.assertRaises(SystemExit):
+                call_command('check_secrets')
+
+
+import json
+
+from .models import Order, PaymentEvent
+from .payments import get_provider
+
+
+# Тесты платёжного модуля проверяют встроенную sandbox-эмуляцию (HMAC-колбэк),
+# поэтому принудительно очищаем реальные ключи провайдеров — иначе ключи из
+# локального .env разработчика «протекают» в тесты: оплата уходила бы в реальный
+# API PayPal по сети, а колбэк требовал бы настоящей проверки подписи вебхука.
+@override_settings(
+    BEREKE_SANDBOX=True, PAYPAL_MODE='sandbox', PAYMENT_PUBLIC_BASE_URL='',
+    PAYPAL_CLIENT_ID='', PAYPAL_CLIENT_SECRET='', PAYPAL_WEBHOOK_ID='',
+    BEREKE_CLIENT_ID='', BEREKE_CLIENT_SECRET='',
+)
+class PaymentsTests(APITestCase):
+    """Тесты платёжного модуля (PAY-002…PAY-006)."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='payer@example.com', password='password123')
+
+    def _checkout(self, provider='bereke', months=1, idem=None):
+        self.client.force_authenticate(user=self.user)
+        headers = {'HTTP_IDEMPOTENCY_KEY': idem} if idem else {}
+        return self.client.post(
+            '/api/orders/checkout/',
+            {'provider': provider, 'months': months},
+            format='json',
+            **headers,
+        )
+
+    def _signed_callback(self, order, outcome='paid'):
+        """Сформировать подписанный payload, как прислал бы провайдер."""
+        provider = get_provider(order.provider)
+        return provider.build_sandbox_callback(order, outcome)
+
+    # --- PAY-002: сквозной разовый платёж через Bereke sandbox ---
+    def test_bereke_end_to_end_activates_subscription(self):
+        resp = self._checkout(provider='bereke', months=1)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.get(number=resp.data['order_number'])
+        self.assertEqual(order.status, Order.STATUS_PENDING)
+        self.assertEqual(order.currency, 'KZT')
+        self.assertIn('/payments/pay/', resp.data['redirect_url'])
+
+        # Провайдер присылает подписанный колбэк об успешной оплате.
+        payload = self._signed_callback(order, 'paid')
+        cb = self.client.post(
+            '/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json',
+        )
+        self.assertEqual(cb.status_code, 200)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PAID)
+        self.assertIsNotNone(order.paid_at)
+        # Подписка пользователя активирована.
+        self.user.subscription.refresh_from_db()
+        self.assertEqual(self.user.subscription.status, 'active')
+        self.assertTrue(self.user.subscription.is_active)
+
+    # --- PAY-003: колбэк-эндпоинт проверяет подпись ---
+    def test_callback_rejects_bad_signature(self):
+        resp = self._checkout(provider='bereke')
+        order = Order.objects.get(number=resp.data['order_number'])
+
+        payload = self._signed_callback(order, 'paid')
+        payload['sign'] = 'deadbeef'  # ломаем подпись
+        cb = self.client.post(
+            '/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json',
+        )
+        self.assertEqual(cb.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PENDING)  # статус не изменился
+
+    # --- PAY-004: автомат состояний запрещает недопустимые переходы ---
+    def test_state_machine_rejects_invalid_transitions(self):
+        order = Order.objects.create(
+            user=self.user, amount=5000, currency='KZT', provider='bereke',
+            idempotency_key='test-sm-1', subscription_months=1,
+        )
+        # created → refunded недопустим
+        self.assertFalse(order.transition_to(Order.STATUS_REFUNDED))
+        self.assertEqual(order.status, Order.STATUS_CREATED)
+        # created → pending → paid допустимо
+        self.assertTrue(order.transition_to(Order.STATUS_PENDING))
+        self.assertTrue(order.transition_to(Order.STATUS_PAID))
+        # paid → pending недопустим
+        self.assertFalse(order.transition_to(Order.STATUS_PENDING))
+        self.assertEqual(order.status, Order.STATUS_PAID)
+        # Каждая попытка перехода фиксируется в аудите.
+        self.assertTrue(PaymentEvent.objects.filter(order=order, event_type='rejected').exists())
+
+    # --- PAY-005: защита от дублей на checkout ---
+    def test_checkout_is_idempotent_with_same_key(self):
+        r1 = self._checkout(provider='bereke', months=1, idem='same-key-123')
+        r2 = self._checkout(provider='bereke', months=1, idem='same-key-123')
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.assertFalse(r1.data['reused'])
+        self.assertTrue(r2.data['reused'])
+        self.assertEqual(r1.data['order_number'], r2.data['order_number'])
+        self.assertEqual(Order.objects.filter(user=self.user).count(), 1)
+
+    # --- PAY-005: повторный колбэк не активирует подписку дважды ---
+    def test_duplicate_callback_is_idempotent(self):
+        resp = self._checkout(provider='bereke')
+        order = Order.objects.get(number=resp.data['order_number'])
+        payload = self._signed_callback(order, 'paid')
+
+        self.client.post('/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json')
+        order.refresh_from_db()
+        paid_end_first = order.user.subscription.paid_end
+
+        # Тот же колбэк ещё раз — заказ уже оплачен, подписка не продлевается.
+        cb2 = self.client.post('/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(cb2.status_code, 200)
+        self.assertFalse(cb2.json()['changed'])
+        order.user.subscription.refresh_from_db()
+        self.assertEqual(order.user.subscription.paid_end, paid_end_first)
+
+    # --- PAY-006: международный платёж через PayPal sandbox (USD) ---
+    def test_paypal_end_to_end_usd(self):
+        resp = self._checkout(provider='paypal', months=2)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.get(number=resp.data['order_number'])
+        self.assertEqual(order.currency, 'USD')
+        self.assertEqual(order.subscription_months, 2)
+
+        payload = self._signed_callback(order, 'paid')
+        cb = self.client.post(
+            '/payments/callback/paypal/', data=json.dumps(payload), content_type='application/json',
+        )
+        self.assertEqual(cb.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PAID)
+
+    # --- PAY-002: отклонённая оплата помечает заказ как failed ---
+    def test_declined_payment_marks_order_failed(self):
+        resp = self._checkout(provider='bereke')
+        order = Order.objects.get(number=resp.data['order_number'])
+        payload = self._signed_callback(order, 'failed')
+        self.client.post('/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json')
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_FAILED)
+
+    # --- Колбэк по несуществующему заказу возвращает 404 ---
+    def test_callback_unknown_order(self):
+        order = Order.objects.create(
+            user=self.user, amount=5000, currency='KZT', provider='bereke',
+            idempotency_key='ghost', provider_order_id='BRK-DOESNOTEXIST',
+        )
+        payload = self._signed_callback(order, 'paid')
+        payload['invoiceId'] = 'BRK-MISSING'
+        payload['sign'] = get_provider('bereke').build_signature(payload)
+        cb = self.client.post('/payments/callback/bereke/', data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(cb.status_code, 404)
+
+    # --- Повторная оплата после неудачной попытки активирует подписку ---
+    def test_failed_order_can_be_retried_and_paid(self):
+        resp = self._checkout(provider='bereke')
+        order = Order.objects.get(number=resp.data['order_number'])
+
+        # Первая попытка — отказ: заказ переходит в failed.
+        fail_payload = self._signed_callback(order, 'failed')
+        self.client.post('/payments/callback/bereke/', data=json.dumps(fail_payload), content_type='application/json')
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_FAILED)
+
+        # Повторный checkout переиспользует тот же заказ и возвращает его в pending.
+        resp2 = self._checkout(provider='bereke')
+        self.assertTrue(resp2.data['reused'])
+        self.assertEqual(resp2.data['order_number'], order.number)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PENDING)
+
+        # Теперь оплата проходит и подписка активируется (раньше переход
+        # failed → paid запрещал автомат состояний — оплата «терялась»).
+        pay_payload = self._signed_callback(order, 'paid')
+        cb = self.client.post('/payments/callback/bereke/', data=json.dumps(pay_payload), content_type='application/json')
+        self.assertEqual(cb.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PAID)
+        self.user.subscription.refresh_from_db()
+        self.assertTrue(self.user.subscription.is_active)
+
+    # --- Оплаченный заказ не блокирует повторную покупку (продление) ---
+    def test_paid_order_does_not_block_new_purchase(self):
+        resp = self._checkout(provider='bereke')
+        order = Order.objects.get(number=resp.data['order_number'])
+        pay_payload = self._signed_callback(order, 'paid')
+        self.client.post('/payments/callback/bereke/', data=json.dumps(pay_payload), content_type='application/json')
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.STATUS_PAID)
+
+        # Повторная покупка того же тарифа должна создать НОВЫЙ заказ, а не
+        # упереться в уникальный idempotency_key уже оплаченного заказа.
+        resp2 = self._checkout(provider='bereke')
+        self.assertEqual(resp2.status_code, status.HTTP_201_CREATED)
+        self.assertNotEqual(resp2.data['order_number'], order.number)
+        self.assertEqual(Order.objects.filter(user=self.user).count(), 2)
+
+    # --- Бесплатная ручная активация PRO недоступна обычному пользователю ---
+    def test_manual_activate_forbidden_for_regular_user(self):
+        self.client.force_authenticate(user=self.user)
+        resp = self.client.post('/api/subscription/activate/', {'months': 12}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.user.subscription.refresh_from_db()
+        self.assertNotEqual(self.user.subscription.status, 'active')
+
+
+from contextlib import contextmanager
+from unittest.mock import MagicMock
+
+from .captcha import validate_captcha
+
+
+def _fake_siteverify(payload):
+    """Подменяет ответ Google siteverify заданным JSON."""
+    @contextmanager
+    def _cm(*args, **kwargs):
+        resp = MagicMock()
+        resp.read.return_value = json.dumps(payload).encode('utf-8')
+        yield resp
+    return _cm
+
+
+@override_settings(
+    RECAPTCHA_SITE_KEY='test-site', RECAPTCHA_SECRET_KEY='test-secret',
+    RECAPTCHA_VERSION='v3', RECAPTCHA_MIN_SCORE=0.5,
+)
+class RecaptchaV3Tests(APITestCase):
+    """Проверка серверной логики reCAPTCHA v3 (score + action)."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _request(self):
+        return self.factory.post('/account/login/', {'g-recaptcha-response': 'token'})
+
+    def test_v3_high_score_passes(self):
+        result = {'success': True, 'score': 0.9, 'action': 'login'}
+        with patch('urllib.request.urlopen', _fake_siteverify(result)):
+            self.assertTrue(validate_captcha(self._request(), action='login'))
+
+    def test_v3_low_score_fails(self):
+        result = {'success': True, 'score': 0.1, 'action': 'login'}
+        with patch('urllib.request.urlopen', _fake_siteverify(result)):
+            self.assertFalse(validate_captcha(self._request(), action='login'))
+
+    def test_v3_action_mismatch_fails(self):
+        result = {'success': True, 'score': 0.9, 'action': 'register'}
+        with patch('urllib.request.urlopen', _fake_siteverify(result)):
+            self.assertFalse(validate_captcha(self._request(), action='login'))
+
+    def test_v3_unsuccessful_token_fails(self):
+        result = {'success': False, 'error-codes': ['invalid-input-response']}
+        with patch('urllib.request.urlopen', _fake_siteverify(result)):
+            self.assertFalse(validate_captcha(self._request(), action='login'))
+
+    def test_v3_missing_token_fails_without_network(self):
+        request = self.factory.post('/account/login/', {})  # нет g-recaptcha-response
+        self.assertFalse(validate_captcha(request, action='login'))
+
+    @override_settings(RECAPTCHA_VERSION='v2')
+    def test_v2_success_passes(self):
+        result = {'success': True}  # v2 не присылает score
+        with patch('urllib.request.urlopen', _fake_siteverify(result)):
+            self.assertTrue(validate_captcha(self._request(), action='login'))
+
+
+@override_settings(RECAPTCHA_SITE_KEY='', RECAPTCHA_SECRET_KEY='')
+class ObservabilityTests(APITestCase):
+    """Тесты эпика наблюдаемости OPS-002..005: health, метрики, логирование.
+
+    Раньше у всего observability-эпика не было автотестов — формат
+    Prometheus-экспозиции и per-request логирование могли молча сломаться.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+
+    def tearDown(self):
+        cache.clear()
+
+    # --- OPS-002: детальный health-check (/api/health/) проверяет БД и кеш ---
+    def test_health_check_returns_ok(self):
+        response = self.client.get('/api/health/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(body['status'], 'healthy')
+        self.assertEqual(body['database'], 'ok')
+        self.assertEqual(body['cache'], 'ok')
+
+    # --- OPS-002/003: эндпоинт отдаёт валидный Prometheus-формат ---
+    def test_prometheus_endpoint_exposes_metrics(self):
+        response = self.client.get('/api/metrics/prometheus/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('text/plain', response['Content-Type'])
+        body = response.content.decode('utf-8')
+        # Должны быть counter'ы (на них строится оконный error rate) и метаданные.
+        for needle in ('# HELP', '# TYPE', 'cohub_requests_total', 'cohub_errors_total'):
+            self.assertIn(needle, body)
+
+    # --- OPS-003: сводка содержит золотые сигналы ---
+    def test_metrics_summary_has_golden_signals(self):
+        response = self.client.get('/api/metrics/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        signals = response.json()['golden_signals']
+        for key in ('request_rate', 'error_rate_percent', 'p95_latency_ms'):
+            self.assertIn(key, signals)
+
+    # --- Опциональная защита метрик токеном ---
+    @override_settings(METRICS_TOKEN='s3cret-token')
+    def test_metrics_require_token_when_configured(self):
+        denied = self.client.get('/api/metrics/prometheus/')
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        allowed = self.client.get(
+            '/api/metrics/prometheus/', HTTP_AUTHORIZATION='Bearer s3cret-token',
+        )
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+
+        allowed_q = self.client.get('/api/metrics/prometheus/?token=s3cret-token')
+        self.assertEqual(allowed_q.status_code, status.HTTP_200_OK)
+
+    # --- OPS-004: ключевой endpoint пишет ровно одну структурную запись ---
+    def test_key_endpoint_emits_one_structured_log(self):
+        with self.assertLogs('cohub.requests', level='INFO') as captured:
+            self.client.get('/api/rooms/')  # /api/ — ключевой префикс
+        records = [
+            r for r in captured.records
+            if getattr(r, 'extra_data', {}).get('event_type') == 'http_request'
+        ]
+        self.assertEqual(len(records), 1)
+        data = records[0].extra_data
+        self.assertEqual(data['path'], '/api/rooms/')
+        self.assertIn('latency_ms', data)
+        self.assertIn('request_id', data)
+
+    # --- OPS-004: 5xx логируется на уровне ERROR (ветка errors.json) ---
+    def test_server_error_logs_at_error_level(self):
+        from .metrics_middleware import MetricsMiddleware
+        middleware = MetricsMiddleware(lambda request: None)
+        request = self.factory.get('/api/rooms/')
+        request.request_id = 'test-req-id'
+        with self.assertLogs('cohub.requests', level='ERROR') as captured:
+            middleware._log_request(request, 500, 42.0)
+        self.assertEqual(captured.records[0].levelname, 'ERROR')
+        self.assertEqual(captured.records[0].extra_data['status_code'], 500)
+
+
+@override_settings(RECAPTCHA_SITE_KEY='', RECAPTCHA_SECRET_KEY='', POSTHOG_API_KEY='')
+class AnalyticsTests(APITestCase):
+    """PostHog-аналитика (Week 5): graceful no-op без ключа, identify, KPI, флаги."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user('analytics@cohub.local', 'analytics@cohub.local', 'pw12345xZ')
+        self.user.first_name = 'Ана'
+        self.user.last_name = 'Литик'
+        self.user.save()
+
+    # --- Без ключа всё выключено и не падает ---
+    def test_disabled_without_key(self):
+        from cohub_app import analytics
+        self.assertFalse(analytics.analytics_enabled())
+
+    def test_capture_and_identify_are_safe_noops(self):
+        from cohub_app import analytics
+        # Не должно бросать исключений и не должно ничего слать.
+        analytics.identify_user(self.user)
+        analytics.capture_event(self.user, 'task_created', {'room_id': 'x'})
+        analytics.capture_event(self.user, 'totally_unknown_event', {})
+
+    def test_feature_flag_falls_back_to_default(self):
+        from cohub_app import analytics
+        self.assertTrue(analytics.feature_enabled('pro-upsell-banner', self.user, default=True))
+        self.assertFalse(analytics.feature_enabled('pro-upsell-banner', self.user, default=False))
+
+    # --- Таксономия: >= 10 различных типов событий ---
+    def test_event_taxonomy_has_10_plus_types(self):
+        from cohub_app import analytics
+        self.assertGreaterEqual(len(analytics.EVENTS), 10)
+        self.assertIn('payment_completed', analytics.EVENTS)
+        self.assertEqual(analytics.FUNNEL_STEPS[0], 'user_signed_up')
+        self.assertEqual(analytics.FUNNEL_STEPS[-1], 'payment_completed')
+
+    # --- Person-свойства: email/имя/план для identify ---
+    def test_person_properties_contain_email_name_plan(self):
+        from cohub_app import analytics
+        props = analytics.person_properties(self.user)
+        self.assertEqual(props['email'], 'analytics@cohub.local')
+        self.assertIn('name', props)
+        self.assertIn('plan', props)
+        # distinct_id одинаков на сервере и клиенте (по id пользователя).
+        self.assertEqual(analytics.distinct_id_for(self.user), str(self.user.id))
+
+    # --- KPI считаются и содержат нужные метрики ---
+    def test_compute_kpis_returns_required_metrics(self):
+        from cohub_app.views import compute_kpis
+        kpi = compute_kpis(period_days=30)
+        for key in ('conversion_rate', 'mrr', 'churn_rate', 'arpu', 'total_users'):
+            self.assertIn(key, kpi)
+        # Без деления на ноль даже при нулевых данных.
+        self.assertIsInstance(kpi['conversion_rate'], float)
+
+    # --- Клиентский сниппет не рендерится без ключа (no-op на фронте) ---
+    def test_posthog_snippet_absent_when_disabled(self):
+        self.client.force_login(self.user)
+        resp = self.client.get('/account/')
+        self.assertNotIn(b'posthog.init', resp.content)
+
+    # --- KPI-дашборд доступен только админу ---
+    def test_kpi_dashboard_requires_admin(self):
+        self.client.force_login(self.user)
+        resp = self.client.get('/analytics/kpi/')
+        self.assertEqual(resp.status_code, 302)  # обычного пользователя редиректит
+
+    # --- MRR сводит разные валюты к KZT (PayPal USD не складывается с Bereke KZT) ---
+    @override_settings(USD_TO_KZT_RATE=475)
+    def test_compute_kpis_converts_usd_to_kzt(self):
+        from decimal import Decimal
+        from cohub_app.models import Order
+        from cohub_app.views import compute_kpis
+        Order.objects.all().delete()  # чистый старт, чтобы число было предсказуемым
+        Order.objects.create(
+            user=self.user, amount=Decimal('9.99'), currency='USD', provider='paypal',
+            status=Order.STATUS_PAID, paid_at=timezone.now(), subscription_months=1,
+            idempotency_key='t-usd', description='usd',
+        )
+        Order.objects.create(
+            user=self.user, amount=Decimal('5000'), currency='KZT', provider='bereke',
+            status=Order.STATUS_PAID, paid_at=timezone.now(), subscription_months=1,
+            idempotency_key='t-kzt', description='kzt',
+        )
+        kpi = compute_kpis(30)
+        # 9.99 * 475 + 5000 = 9745.25 (а НЕ 9.99 + 5000 = 5009.99).
+        self.assertAlmostEqual(kpi['mrr'], 9.99 * 475 + 5000, places=1)
+
+    # --- Клиентский сниппет рендерится с ключом и экранирует XSS в имени ---
+    @override_settings(POSTHOG_API_KEY='phc_test_key')
+    def test_posthog_snippet_present_and_xss_safe(self):
+        self.user.first_name = '</script><script>alert(1)</script>'
+        self.user.save()
+        self.client.force_login(self.user)
+        resp = self.client.get('/account/')
+        body = resp.content.decode('utf-8', 'ignore')
+        self.assertIn('posthog.init', body)
+        # Имя пользователя не должно «выйти» из <script> сырым тегом.
+        self.assertNotIn('</script><script>alert(1)', body)
+
+
+# ===========================================================================
+# Доработки чек-листа: бэкап/restore, Celery, N+1, RBAC, кэш метрик
+# ===========================================================================
+
+class BackupRestoreTests(TestCase):
+    """Задача #8: backup.sh/backup_data + restore_data — полный round-trip."""
+
+    def test_backup_creates_file_and_restore_recovers_data(self):
+        owner = User.objects.create_user(username='backup-user@example.com', password='pw12345678')
+        room = Room.objects.create(name='Backup Room', code='BKP001', owner=owner)
+        room_id = room.id
+
+        with TemporaryDirectory() as tmp:
+            call_command('backup_data', '--output-dir', tmp)
+            backups = list(Path(tmp).glob('cohub-backup-*.json'))
+            self.assertEqual(len(backups), 1, 'backup_data должен создать ровно один JSON-файл')
+            backup_file = backups[0]
+
+            # Симулируем потерю данных.
+            Room.objects.filter(id=room_id).delete()
+            self.assertFalse(Room.objects.filter(id=room_id).exists())
+
+            # Восстанавливаем из бэкапа.
+            call_command('restore_data', str(backup_file))
+
+        self.assertTrue(Room.objects.filter(id=room_id).exists(), 'Комната должна восстановиться из бэкапа')
+        restored = Room.objects.get(id=room_id)
+        self.assertEqual(restored.name, 'Backup Room')
+        self.assertEqual(restored.owner.username, 'backup-user@example.com')
+
+
+class CeleryTaskTests(TestCase):
+    """Задача #12: реальная Celery-задача выполняется как фоновая (eager без брокера)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Принудительно включаем eager на самом Celery-приложении (не только в
+        # Django settings), чтобы .delay() выполнялся синхронно независимо от того,
+        # задан ли в окружении REDIS_URL.
+        from cohub_settings.celery import app as celery_app
+        cls._celery_app = celery_app
+        cls._prev_eager = celery_app.conf.task_always_eager
+        cls._prev_prop = celery_app.conf.task_eager_propagates
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = True
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._celery_app.conf.task_always_eager = cls._prev_eager
+        cls._celery_app.conf.task_eager_propagates = cls._prev_prop
+        super().tearDownClass()
+
+    def _make_loan(self):
+        from decimal import Decimal
+        owner = User.objects.create_user(username='celery-owner@example.com', password='pw12345678')
+        lender = User.objects.create_user(username='celery-lender@example.com', password='pw12345678')
+        borrower = User.objects.create_user(username='celery-borrower@example.com', password='pw12345678')
+        room = Room.objects.create(name='Celery Room', code='CEL001', owner=owner)
+        return Loan.objects.create(room=room, lender=lender, borrower=borrower, amount_total=Decimal('100'))
+
+    def test_celery_task_runs_and_updates_loan(self):
+        from cohub_app.tasks import send_loan_reminder_task
+        loan = self._make_loan()
+        self.assertEqual(loan.reminder_count, 0)
+
+        result = send_loan_reminder_task.delay(str(loan.id))
+        self.assertTrue(result.successful())
+
+        loan.refresh_from_db()
+        self.assertEqual(loan.reminder_count, 1)
+        self.assertIsNotNone(loan.last_reminder_sent_at)
+
+    def test_dispatch_falls_back_to_db_queue_without_redis(self):
+        from cohub_app.tasks import dispatch_loan_reminder, run_pending_tasks
+        loan = self._make_loan()
+        with override_settings(REDIS_URL=None):
+            mode = dispatch_loan_reminder(loan.id)
+        self.assertEqual(mode, 'db-queue')
+        self.assertEqual(
+            BackgroundTask.objects.filter(task_name='send_loan_reminder', status='pending').count(), 1
+        )
+        processed = run_pending_tasks()
+        self.assertGreaterEqual(processed, 1)
+        loan.refresh_from_db()
+        self.assertEqual(loan.reminder_count, 1)
+
+
+class NPlusOneQueryTests(TestCase):
+    """Задача #14: select_related устраняет N+1 — константное число запросов."""
+
+    def test_select_related_reduces_query_count(self):
+        owner = User.objects.create_user(username='nq@example.com', password='pw12345678')
+        room = Room.objects.create(name='NQ Room', code='NQ0001', owner=owner)
+        for i in range(5):
+            Task.objects.create(room=room, title=f'T{i}', created_by=owner, assigned_to=owner)
+
+        # ДО: наивный доступ к FK в цикле → N+1.
+        with CaptureQueriesContext(connection) as naive:
+            for task in Task.objects.filter(room=room):
+                _ = task.room.name
+                _ = task.assigned_to.username
+        naive_count = len(naive.captured_queries)
+
+        # ПОСЛЕ: select_related → все связи одним запросом.
+        with self.assertNumQueries(1):
+            for task in Task.objects.filter(room=room).select_related('room', 'assigned_to'):
+                _ = task.room.name
+                _ = task.assigned_to.username
+
+        # Наивная версия делает заметно больше запросов (1 + 2*N), чем оптимизированная (1).
+        self.assertGreater(naive_count, 1)
+
+
+@override_settings(RECAPTCHA_SITE_KEY='', RECAPTCHA_SECRET_KEY='')
+class RBACRoleTests(APITestCase):
+    """Задача #20: роли admin/user enforced permission-классами (IsAdminRole)."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='rbac-user@example.com', password='pw12345678')
+        self.admin = User.objects.create_user(username='rbac-admin@example.com', password='pw12345678')
+        # Роль admin через профиль (а не is_staff) — проверяем именно RBAC-роль.
+        # Меняем через уже закэшированный сигналом объект self.admin.profile, чтобы
+        # обратный кэш OneToOne не остался со старой ролью 'user'.
+        admin_profile = self.admin.profile
+        admin_profile.role = 'admin'
+        admin_profile.save(update_fields=['role'])
+
+    def test_admin_overview_requires_auth(self):
+        resp = self.client.get('/api/admin/overview/')
+        self.assertIn(resp.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_admin_overview_forbidden_for_user(self):
+        self.client.force_authenticate(self.user)
+        resp = self.client.get('/api/admin/overview/')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_overview_allowed_for_admin(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get('/api/admin/overview/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['role'], 'admin')
+
+    def test_subscription_activate_forbidden_for_user(self):
+        self.client.force_authenticate(self.user)
+        resp = self.client.post('/api/subscription/activate/', {'months': 1})
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class MetricsCacheTests(APITestCase):
+    """Задача #13: эндпоинты метрик отдаются из кэша (Redis/локальный)."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_metrics_endpoints_use_cache(self):
+        from cohub_app.monitoring import METRICS_CACHE_KEY
+        self.assertIsNone(cache.get(METRICS_CACHE_KEY))
+
+        # Первый вызов наполняет кэш общим payload'ом.
+        r1 = self.client.get('/api/metrics/')
+        self.assertEqual(r1.status_code, 200)
+        self.assertIsNotNone(cache.get(METRICS_CACHE_KEY), 'payload метрик должен кэшироваться')
+
+        # Prometheus- и summary-эндпоинты используют тот же кэш → тоже кэшируются.
+        self.assertEqual(self.client.get('/api/metrics/prometheus/').status_code, 200)
+        self.assertEqual(self.client.get('/api/metrics/summary/').status_code, 200)
+
+
+class RootHealthTests(TestCase):
+    """Задача #16: корневой /health/ (его проверяет healthcheck Docker/Render)."""
+
+    def test_root_health_reports_db_and_cache(self):
+        import json
+        resp = self.client.get('/health/')
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['checks']['database'], 'ok')
+        self.assertEqual(data['checks']['cache'], 'ok')
+
+
+class ManagementCommandsSmokeTests(TestCase):
+    """Дым-тесты management-команд фона/производительности (заодно покрытие)."""
+
+    def _make_loan(self):
+        from decimal import Decimal
+        owner = User.objects.create_user('rw-owner@example.com', password='pw12345678')
+        lender = User.objects.create_user('rw-lender@example.com', password='pw12345678')
+        borrower = User.objects.create_user('rw-borrower@example.com', password='pw12345678')
+        room = Room.objects.create(name='RW', code='RW0001', owner=owner)
+        return Loan.objects.create(room=room, lender=lender, borrower=borrower, amount_total=Decimal('50'))
+
+    def test_run_worker_once_processes_enqueued_task(self):
+        from io import StringIO
+        from cohub_app.tasks import enqueue
+        loan = self._make_loan()
+        enqueue('send_loan_reminder', loan_id=str(loan.id))
+
+        call_command('run_worker', '--once', stdout=StringIO())
+
+        loan.refresh_from_db()
+        self.assertEqual(loan.reminder_count, 1)
+        self.assertFalse(BackgroundTask.objects.filter(status='pending').exists())
+
+    def test_nplusone_report_runs_and_rolls_back(self):
+        from io import StringIO
+        call_command('nplusone_report', '--rows', '3', stdout=StringIO())
+        # Команда сеет данные во вложенной транзакции и откатывает их.
+        self.assertFalse(Room.objects.filter(code='NP1DEMO').exists())

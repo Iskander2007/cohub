@@ -11,7 +11,11 @@
 <main class="main register-main">
     <section class="register-panel card">
         <div class="register-inner">
-            <h2 class="register-title">ПРИСОЕДИНИТЬСЯ К COHUB</h2>
+            <div class="auth-head">
+                <div class="auth-logo">CO</div>
+                <h2 class="register-title">Присоединиться к COHUB</h2>
+                <p class="register-subtitle">Создайте аккаунт и наведите порядок в совместной жизни.</p>
+            </div>
 
             {% if errors %}
             <div class="error-message is-visible">
@@ -45,13 +49,36 @@
                         placeholder="Повторите пароль" required minlength="8" title="Повторите пароль">
                 </div>
 
+                {% if recaptcha_enabled %}
+                    {% if recaptcha_version == 'v3' %}
+                    {# reCAPTCHA v3: невидимая, токен подставляет JS перед отправкой формы. #}
+                    <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response">
+                    {% else %}
+                    <div class="input-group">
+                        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="input-group">
+                    <label for="register-captcha">{{ captcha_question }}</label>
+                    <input id="register-captcha" type="text" name="captcha" inputmode="numeric" required
+                        autocomplete="off" placeholder="Ответ на вопрос" title="Защита от ботов">
+                </div>
+                {% endif %}
+
                 <div class="checkbox">
                     <input type="checkbox" id="terms" name="terms" required disabled>
                     <label for="terms">Я ознакомился и соглашаюсь с <a href="#" class="privacy-link"
                             id="open-privacy-modal">Политикой конфиденциальности РК</a></label>
                 </div>
 
-                <button type="submit" class="btn register-btn">ЗАРЕГИСТРИРОВАТЬСЯ</button>
+                <button type="submit" class="btn register-btn">Зарегистрироваться</button>
+                {% if google_oauth_enabled %}
+                <div class="auth-divider"><span>или</span></div>
+                <a href="{% url 'google-login' %}" class="btn btn-google">
+                    <span class="btn-google__g">G</span> Зарегистрироваться через Google
+                </a>
+                {% endif %}
 
                 <p class="login-link">Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></p>
             </form>
@@ -152,10 +179,21 @@
         const confirmBtn = document.getElementById('privacy-confirm-btn');
         const termsCheck = document.getElementById('terms');
 
+        function unlockAgreement() {
+            modalCheck.disabled = false;
+            document.getElementById('privacy-agree-label-wrap').classList.add('readable');
+        }
+
         function openModal(e) {
             e.preventDefault();
             modal.removeAttribute('hidden');
             document.body.style.overflow = 'hidden';
+            // Если текст политики помещается целиком и прокручивать нечего —
+            // сразу разблокируем галочку, иначе событие scroll не наступит и
+            // пользователь не сможет завершить регистрацию (мёртвый тупик).
+            if (scrollBody.scrollHeight <= scrollBody.clientHeight + 10) {
+                unlockAgreement();
+            }
         }
 
         function closeModal() {
@@ -173,8 +211,7 @@
         scrollBody.addEventListener('scroll', function () {
             const scrolled = scrollBody.scrollTop + scrollBody.clientHeight >= scrollBody.scrollHeight - 10;
             if (scrolled) {
-                modalCheck.disabled = false;
-                document.getElementById('privacy-agree-label-wrap').classList.add('readable');
+                unlockAgreement();
             }
         });
 
@@ -198,4 +235,33 @@
     })();
 </script>
 
+{% endblock %}
+
+{% block extra_js %}
+{% if recaptcha_enabled %}
+    {% if recaptcha_version == 'v3' %}
+    <script src="https://www.google.com/recaptcha/api.js?render={{ recaptcha_site_key }}"></script>
+    <script>
+        // reCAPTCHA v3: токен генерируется в фоне и подставляется в скрытое поле
+        // перед отправкой формы регистрации.
+        (function () {
+            var form = document.querySelector('.register-form');
+            if (!form) return;
+            form.addEventListener('submit', function (e) {
+                var field = document.getElementById('g-recaptcha-response');
+                if (field && field.value) return; // токен уже получен
+                e.preventDefault();
+                grecaptcha.ready(function () {
+                    grecaptcha.execute('{{ recaptcha_site_key }}', { action: 'register' }).then(function (token) {
+                        field.value = token;
+                        form.submit();
+                    });
+                });
+            });
+        })();
+    </script>
+    {% else %}
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    {% endif %}
+{% endif %}
 {% endblock %}

@@ -1,0 +1,75 @@
+# Alertmanager: маршрутизация и доставка алертов COHUB в Telegram.
+#
+# Все алерты (error rate / latency / server down / saturation / payments) уходят
+# одному получателю — в ваш Telegram-чат через бота.
+#
+# НАСТРОЙКА (подробно: monitoring/TELEGRAM_ALERTS.md):
+#   1. Создайте бота у @BotFather → получите токен вида 123456:ABC...
+#   2. Впишите токен в файл monitoring/alertmanager/secrets/telegram_bot_token
+#      (файл в .gitignore — секрет не коммитится).
+#   3. Узнайте свой chat_id (напишите боту любое сообщение, затем откройте
+#      https://api.telegram.org/bot<ТОКЕН>/getUpdates и возьмите поле "chat":{"id":...}).
+#   4. Подставьте chat_id ниже (поле chat_id) и перезапустите alertmanager.
+
+global:
+  resolve_timeout: 5m
+  # SMTP для email-алертов (Gmail). Пароль — это App Password (16 символов),
+  # он читается из файла-секрета (в .gitignore), а не хранится в конфиге.
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'artkimyu@gmail.com'
+  smtp_auth_username: 'artkimyu@gmail.com'
+  smtp_auth_password_file: '/etc/alertmanager/secrets/smtp_password'
+  smtp_require_tls: true
+
+# Дерево маршрутизации: всё в Telegram; critical — с меньшей задержкой и чаще.
+route:
+  receiver: telegram
+  group_by: ['alertname', 'severity']
+  group_wait: 30s        # подождать перед первой отправкой группы
+  group_interval: 5m     # как часто досылать обновления группы
+  repeat_interval: 4h    # как часто повторять неразрешённый алерт
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: telegram
+      group_wait: 10s
+      repeat_interval: 1h
+
+# Подавление шума: если сервер лежит (critical), не спамить производными warning'ами.
+inhibit_rules:
+  - source_matchers: [ 'alertname = "CohubServerDown"' ]
+    target_matchers: [ 'severity =~ "warning|info"' ]
+    equal: ['instance']
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - send_resolved: true
+        api_url: https://api.telegram.org
+        # Токен читается из файла (в .gitignore) — не хранится в репозитории.
+        bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        
+        chat_id: 5363028728
+        # Plain text (без parse_mode): описания алертов содержат символы > и %,
+        # которые ломали бы HTML/Markdown-разметку Telegram.
+        parse_mode: ""
+        message: |
+          {{ if eq .Status "firing" }}🔴 СРАБОТАЛ АЛЕРТ (CoHub){{ else }}✅ ВОССТАНОВЛЕНО (CoHub){{ end }}
+          {{ range .Alerts }}
+          • {{ .Labels.alertname }} [{{ .Labels.severity }}]
+          {{ .Annotations.summary }}
+          {{ with .Annotations.description }}{{ . }}{{ end }}
+          {{ end }}
+    # Email-канал: те же алерты дублируются на почту. SMTP задан в global выше.
+    email_configs:
+      - to: 'artkimyu@gmail.com'
+        send_resolved: true
+        headers:
+          Subject: '{{ if eq .Status "firing" }}🔴 CoHub ALERT{{ else }}✅ CoHub RESOLVED{{ end }} — {{ .CommonLabels.alertname }} [{{ .CommonLabels.severity }}]'
+        html: |
+          <h3>{{ if eq .Status "firing" }}🔴 СРАБОТАЛ АЛЕРТ (CoHub){{ else }}✅ ВОССТАНОВЛЕНО (CoHub){{ end }}</h3>
+          {{ range .Alerts }}
+          <p><b>{{ .Labels.alertname }}</b> [{{ .Labels.severity }}]<br>
+          {{ .Annotations.summary }}<br>
+          {{ with .Annotations.description }}{{ . }}{{ end }}</p>
+          {{ end }}

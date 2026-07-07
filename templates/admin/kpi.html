@@ -1,0 +1,57 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; KPI Dashboard
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>📊 KPI Dashboard</h1>
+<p style="max-width:820px; color:var(--body-quiet-color, #666);">
+    Ключевые продуктовые метрики COHUB за последние {{ kpi.period_days }} дней.
+    Считаются из реальных данных (подписки и заказы) функцией <code>compute_kpis()</code>.
+    Динамика событий — в PostHog.
+</p>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin:24px 0;">
+    <div class="module" style="padding:16px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">Conversion rate</div>
+        <div style="font-size:32px; font-weight:700; margin:8px 0;">{{ kpi.conversion_rate }}%</div>
+        <div style="font-size:12px; opacity:.7;">{{ kpi.pro_users }} PRO из {{ kpi.total_users }} пользователей</div>
+    </div>
+    <div class="module" style="padding:16px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">MRR</div>
+        <div style="font-size:32px; font-weight:700; margin:8px 0;">{{ kpi.mrr }} <span style="font-size:16px; opacity:.7;">{{ kpi.currency }}</span></div>
+        <div style="font-size:12px; opacity:.7;">Monthly Recurring Revenue</div>
+    </div>
+    <div class="module" style="padding:16px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">Churn rate</div>
+        <div style="font-size:32px; font-weight:700; margin:8px 0;">{{ kpi.churn_rate }}%</div>
+        <div style="font-size:12px; opacity:.7;">{{ kpi.cancelled_users }} отменили / истекли</div>
+    </div>
+    <div class="module" style="padding:16px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7;">ARPU</div>
+        <div style="font-size:32px; font-weight:700; margin:8px 0;">{{ kpi.arpu }} <span style="font-size:16px; opacity:.7;">{{ kpi.currency }}</span></div>
+        <div style="font-size:12px; opacity:.7;">Средний доход на PRO-пользователя</div>
+    </div>
+</div>
+
+<div class="module" style="padding:0; margin-bottom:24px;">
+    <h2>Детали</h2>
+    <table style="width:100%;">
+        <tr><th style="text-align:left;">Всего пользователей</th><td>{{ kpi.total_users }}</td></tr>
+        <tr><th style="text-align:left;">PRO (активная подписка)</th><td>{{ kpi.pro_users }}</td></tr>
+        <tr><th style="text-align:left;">На пробном периоде</th><td>{{ kpi.trial_users }}</td></tr>
+        <tr><th style="text-align:left;">Отменили / истекли</th><td>{{ kpi.cancelled_users }}</td></tr>
+        <tr><th style="text-align:left;">Оплат за {{ kpi.period_days }} дней</th><td>{{ kpi.paid_orders_30d }}</td></tr>
+    </table>
+</div>
+
+<p style="max-width:820px; font-size:13px; opacity:.8;">
+    <b>Формулы:</b> conversion = PRO / все пользователи; MRR = сумма оплат за 30 дней, нормированная к месяцу;
+    churn = отменившие / (PRO + отменившие); ARPU = MRR / PRO. Подробнее — в <code>ANALYTICS.md</code>.
+</p>
+{% endblock %}

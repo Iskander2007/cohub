@@ -26,8 +26,18 @@ wheels/
 # Django
 *.log
 db.sqlite3
+# Эфемерные файлы SQLite (WAL/SHM) — не версионируем.
+db.sqlite3-shm
+db.sqlite3-wal
 /media
 /staticfiles
+
+# Runtime-логи приложения (JSON-логи платежей/ошибок/запросов).
+logs/
+
+# Артефакты нагрузочного тестирования (генерируются locust'ом).
+loadtest_report.html
+loadtest_stats_*.csv
 
 # IDE
 .vscode/
@@ -40,6 +50,18 @@ db.sqlite3
 # Environment
 .env
 .env.local
+
+# Секреты алертов (коммитим только *.example).
+monitoring/alertmanager/secrets/telegram_bot_token
+monitoring/alertmanager/secrets/smtp_password
+
+# Локальные бэкапы БД (создаются backup.sh / backup_data).
+/backups
+# Отчёты покрытия тестами (pytest-cov).
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
 
 # OS
 Thumbs.db

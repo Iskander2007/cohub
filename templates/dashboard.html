@@ -52,6 +52,9 @@
         {% if user.is_authenticated %}
         <a href="{% url 'profile' %}" class="nav-item">👤 Аккаунт</a>
         <a href="{% url 'subscription' %}" class="nav-item">💎 Подписка</a>
+        {% if user.is_superuser or user.is_staff or user.profile.role == 'admin' %}
+        <a href="{% url 'kpi-dashboard' %}" class="nav-item">📊 KPI</a>
+        {% endif %}
         <a href="{% url 'logout' %}" class="nav-item">🚪 Выход</a>
         {% else %}
         <a href="{% url 'login' %}" class="nav-item">👤 Аккаунт</a>
@@ -61,6 +64,22 @@
 
 <!-- MAIN -->
 <main class="main">
+    {% comment %}
+    Week 5 feature flag: баннер управляется флагом 'pro-upsell-banner' в PostHog.
+    Включить/выключить можно в интерфейсе PostHog без редеплоя приложения.
+    {% endcomment %}
+    {% if show_pro_banner %}
+    <section class="card pro-upsell-banner" data-feature-flag="pro-upsell-banner"
+        style="display:flex;align-items:center;justify-content:space-between;gap:1rem;
+               background:linear-gradient(135deg,#6d28d9,#2563eb);color:#fff;">
+        <div>
+            <div class="card-title" style="color:#e9d5ff;">COHUB PRO</div>
+            <h2 style="margin:.2rem 0;">Откройте PRO-возможности 🚀</h2>
+            <p style="margin:0;opacity:.9;">Расширенная аналитика, приоритетная поддержка и больше комнат.</p>
+        </div>
+        <a href="{% url 'subscription' %}" class="btn-primary" style="white-space:nowrap;">Перейти на PRO</a>
+    </section>
+    {% endif %}
     <section class="card dashboard-insights-spotlight {% if show_insights_first %}is-priority{% endif %}">
         <div class="dashboard-insights-header">
             <div>
