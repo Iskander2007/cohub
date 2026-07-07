@@ -260,6 +260,12 @@ PAYPAL_WEBHOOK_SECRET = os.environ.get('PAYPAL_WEBHOOK_SECRET', 'paypal-sandbox-
 POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', '')
 POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://us.i.posthog.com')
 
+# --- Google Analytics 4 (gtag.js) -----------------------------------------
+# ID измерения формата G-XXXXXXXXXX. Без него partials/google_analytics.html
+# ничего не подключает (graceful no-op, как у PostHog). Значение по умолчанию —
+# ID проекта COHUB; переопределяется переменной окружения GOOGLE_ANALYTICS_ID.
+GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID', 'G-WZX3KZ8ZV6')
+
 # Курс USD→KZT для сведе́ния KPI к одной валюте. Заказы Bereke в тенге, PayPal —
 # в долларах; без конвертации MRR/ARPU складывали бы 9.99 и 5000 как одну валюту
 # и давали бы неверное число. Это приблизительный конфиг-курс (не биржевой);

@@ -58,4 +58,6 @@ def analytics_flags(request):
         'posthog_distinct_id': distinct_id,
         # XSS-safe JSON: name/email — пользовательский ввод, экранируем < > & и пр.
         'posthog_person_json': _json_for_script(person) if person else '',
+        # Google Analytics 4 (gtag.js). Пусто → partials/google_analytics.html no-op.
+        'google_analytics_id': getattr(settings, 'GOOGLE_ANALYTICS_ID', ''),
     }

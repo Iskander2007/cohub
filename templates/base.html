@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     {% comment %}Редизайн-оверлей: дизайн-токены и стилизация компонентов поверх style.css.{% endcomment %}
     <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    {% comment %}Google Analytics 4 (gtag.js) — no-op без GOOGLE_ANALYTICS_ID.{% endcomment %}
+    {% include 'partials/google_analytics.html' %}
     {% comment %}PostHog-аналитика: identify + автозахват $pageview (no-op без ключа).{% endcomment %}
     {% include 'partials/posthog.html' %}
 </head>
