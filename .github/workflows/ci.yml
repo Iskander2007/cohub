@@ -92,4 +92,7 @@ jobs:
           path: ./
           base: ""
           head: HEAD
-          extra_args: --results=verified,unknown
+          # Валим сборку только на подтверждённых (verified) секретах, чтобы
+          # не краснеть на placeholder-строках вроде примера DATABASE_URL в
+          # .env.production и локальных dev-кредов docker-compose (они unverified).
+          extra_args: --results=verified
